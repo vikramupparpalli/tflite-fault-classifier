@@ -84,7 +84,7 @@ validator = TFLiteValidator(
 
 print("\nValidating on test data...")
 # Note: You'll need to create a test CSV with format:
-# Ia,Ib,Ic,Vdc,Temp,VFO_feedback,R_winding,label
+# Ia,Ib,Ic,Vdc,Temp,VFO_feedback,label
 
 metrics = validator.validate_on_csv('test_data.csv', engineer_features)
 
@@ -120,7 +120,6 @@ volatile float Ic_reading = 0;
 volatile float Vdc_reading = 0;
 volatile float Temp_reading = 0;
 volatile float VFO_feedback = 1; // 1 = ON, 0 = OFF
-volatile float R_winding = 1.0;
 
 // Startup: Initialize classifier
 void init_motor_control(void) {
@@ -147,7 +146,7 @@ void __attribute__((interrupt)) TIM1_UP_IRQHandler(void) {
     float Temp = Temp_reading;
     
     // ===== FAULT CLASSIFICATION (every 100 ms) =====
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
+    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     
     // ===== GET LATEST PREDICTION =====
     // (prediction is updated every 100 ms, not every cycle)
@@ -208,18 +207,17 @@ Python (training):
 """
 
 def engineer_features_python(X_raw):
-    Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding = X_raw[0]
-    
+    Ia, Ib, Ic, Vdc, Temp, VFO_feedback = X_raw[0]
+
     I_max = max(Ia, Ib, Ic)
     I_imbalance = max(Ia, Ib, Ic) - min(Ia, Ib, Ic)
-    V_normalized = Vdc / 48.0
-    Temp_normalized = Temp / 120.0
+    V_normalized = Vdc / 340.0
+    Temp_normalized = Temp / 125.0
     VFO_feedback = 1 if VFO_feedback else 0
-    R_normalized = R_winding - 1.0
-    I_rms = (Ia**2 + Ib**2 + Ic**2) / 3.0) ** 0.5
-    
-    return [I_max, I_imbalance, V_normalized, Temp_normalized, 
-            VFO_feedback, R_normalized, I_rms]
+    I_rms = ((Ia**2 + Ib**2 + Ic**2) / 3.0) ** 0.5
+
+    return [I_max, I_imbalance, V_normalized, Temp_normalized,
+            VFO_feedback, I_rms]
 
 
 """
@@ -233,39 +231,34 @@ void engineer_features(void) {
     float Vdc = sensor_data.Vdc;
     float Temp = sensor_data.Temp;
     float VFO_feedback = sensor_data.VFO_feedback; // 1 = ON, 0 = OFF
-    float R_winding = sensor_data.R_winding;
-    
+
     // Feature 1: Max phase current
     float I_max = (Ia > Ib) ? Ia : Ib;
     I_max = (I_max > Ic) ? I_max : Ic;
     features[0] = I_max;
-    
+
     // Feature 2: Phase current imbalance
     float I_min = (Ia < Ib) ? Ia : Ib;
     I_min = (I_min < Ic) ? I_min : Ic;
     float I_imbalance = I_max - I_min;
     features[1] = I_imbalance;
-    
-    // Feature 3: Voltage normalized (48V nominal)
-    float V_normalized = Vdc / 48.0f;
+
+    // Feature 3: Voltage normalized (340V nominal)
+    float V_normalized = Vdc / 340.0f;
     features[2] = V_normalized;
-    
-    // Feature 4: Temperature normalized (0-120°C)
-    float Temp_normalized = Temp / 120.0f;
+
+    // Feature 4: Temperature normalized (125°C max)
+    float Temp_normalized = Temp / 125.0f;
     features[3] = Temp_normalized;
-    
+
     // Feature 5: VFO feedback (ON/OFF)
     float VFO_feedback_feature = (VFO_feedback != 0) ? 1.0f : 0.0f;
     features[4] = VFO_feedback_feature;
-    
-    // Feature 6: Resistance normalized (1.0 baseline)
-    float R_normalized = R_winding - 1.0f;
-    features[5] = R_normalized;
-    
-    // Feature 7: RMS current estimate
+
+    // Feature 6: RMS current estimate
     float I_sq_sum = (Ia*Ia + Ib*Ib + Ic*Ic) / 3.0f;
     float I_rms_estimate = sqrtf(I_sq_sum);
-    features[6] = I_rms_estimate;
+    features[5] = I_rms_estimate;
 }
 
 
@@ -356,7 +349,6 @@ datasets = [
     (*generator.undervoltage_fault(n_samples=30), 'undervoltage'),
     (*generator.overtemp_fault(n_samples=40), 'overtemp'),
     (*generator.vfo_fault(n_samples=20), 'vfo'),
-    (*generator.resistance_degrade_fault(n_samples=25), 'resistance'),
 ]
 
 # Combine into one dataset
@@ -373,7 +365,7 @@ X_all = np.vstack(X_all)
 y_all = np.hstack(y_all)
 
 # Create DataFrame for CSV export
-df = pd.DataFrame(X_all, columns=['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_freq', 'R_winding'])
+df = pd.DataFrame(X_all, columns=['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback'])
 df['label'] = y_all
 df['label_name'] = labels_all
 
@@ -419,10 +411,9 @@ void measure_inference_performance(void) {
         sensor_data.Ia = 10.5f;
         sensor_data.Ib = 10.2f;
         sensor_data.Ic = 10.1f;
-        sensor_data.Vdc = 48.3f;
+        sensor_data.Vdc = 340.3f;
         sensor_data.Temp = 55.2f;
-        sensor_data.VFO_freq = 16050;
-        sensor_data.R_winding = 1.02f;
+        sensor_data.VFO_feedback = 1.0f;
         
         run_inference();
         
@@ -515,14 +506,14 @@ Your real-world fault data should match this format:
 """
 
 # test_data.csv format:
-# Ia,Ib,Ic,Vdc,Temp,VFO_freq,R_winding,label
-# 9.8,10.1,9.9,48.2,50.5,16000,1.0,0
-# 10.5,10.3,10.1,48.1,51.2,16020,1.01,0
-# 12.2,13.5,11.8,48.0,52.1,16000,1.02,0
-# 18.5,19.2,17.8,48.3,55.2,15950,1.03,0
-# 22.1,23.5,21.3,48.5,62.1,16050,1.05,1
+# Ia,Ib,Ic,Vdc,Temp,VFO_feedback,label
+# 6.8,7.1,6.9,340.2,50.5,1,0
+# 7.2,7.0,7.1,340.1,51.2,1,0
+# 7.5,8.0,7.2,340.0,52.1,1,0
+# 8.5,8.8,8.2,340.3,55.2,1,0
+# 8.9,9.0,8.7,341.5,62.1,1,1
 # ...
-# 
+#
 # Label meanings:
 #   0 = NO_FAULT
 #   1 = OVERCURRENT
@@ -530,7 +521,6 @@ Your real-world fault data should match this format:
 #   3 = UNDERVOLTAGE
 #   4 = OVERTEMP
 #   5 = VFO_FAULT
-#   6 = RESISTANCE_DEGRADE
 
 # Example Python code to create this from your embedded logs:
 import pandas as pd
@@ -547,9 +537,8 @@ ground_truth = pd.DataFrame({
     'Ic': logs['current_c'],
     'Vdc': logs['bus_voltage'],
     'Temp': logs['ipm_temp'],
-    'VFO_freq': logs['vfo_frequency'],
-    'R_winding': logs['winding_resistance_estimate'],
-    'label': logs['fault_annotation'],  # Human-assigned (0-6)
+    'VFO_feedback': logs['vfo_feedback'],
+    'label': logs['fault_annotation'],  # Human-assigned (0-5)
 })
 
 ground_truth.to_csv('real_fault_data_verified.csv', index=False)

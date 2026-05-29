@@ -7,7 +7,6 @@ A modular end-to-end ML pipeline for real-time fault classification on your moto
 
 - `phase_current_analyser.py`: Phase current, voltage, and related faults
 - `ipm_vfo_analyser.py`: IPM temperature and VFO feedback faults
-- `resistance_degrade_analyser.py`: Winding resistance degradation
 
 The main script (`tinyml_fault_classifier.py`) orchestrates these modules and delegates feature extraction to their static methods. Ensure any embedded implementation matches the logic in these analyzers.
 
@@ -86,10 +85,10 @@ void timer_interrupt(void) {
     // Read sensors
     float Ia = read_current_a();
 
-       // ... read Ib, Ic, Vdc, Temp, VFO_feedback, R_winding ...
+       // ... read Ib, Ic, Vdc, Temp, VFO_feedback ...
 
        // Call classifier (runs periodically, non-blocking)
-       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
+       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     
     // Rest of ISR (motor control, PWM, etc)
 }
@@ -106,18 +105,17 @@ void timer_interrupt(void) {
 └──────────────────────────────┬──────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│         SENSOR INPUTS (5 raw measurements)                      │
+│         SENSOR INPUTS (4 raw measurements)                      │
 │  • Phase currents (Ia, Ib, Ic)                                  │
 │  • DC bus voltage (Vdc)                                         │
 │  • IPM temperature (Temp)                                       │
 │  • Gate driver feedback (VFO_feedback, ON/OFF)                  │
-│  • Winding resistance (R_winding, estimated or measured)        │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│    FEATURE ENGINEERING (7 engineered features)                  │
+│    FEATURE ENGINEERING (6 engineered features)                  │
 │  • I_max, I_imbalance, V_normalized, Temp_normalized           │
-│  • VFO_feedback, R_normalized, I_rms_estimate                  │
+│  • VFO_feedback, I_rms_estimate                                │
 │  Time: ~2 µs                                                    │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
@@ -130,22 +128,21 @@ void timer_interrupt(void) {
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │    TFLITE INFERENCE (quantized model)                           │
-│  • Dense(32, relu) → Dense(64, relu) → Dense(7, softmax)        │
-│  • Input: 7 int8 values                                         │
-│  • Output: 7 class scores (int8)                                │
+│  • Dense(32, relu) → Dense(64, relu) → Dense(6, softmax)        │
+│  • Input: 6 int8 values                                         │
+│  • Output: 6 class scores (int8)                                │
 │  Time: ~40-60 µs on Cortex-M4 @ 80 MHz                         │
 │  (Runs every 100 ms = 1600 samples, non-blocking)              │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│    OUTPUT: FAULT CLASSIFICATION (7 classes)                    │
+│    OUTPUT: FAULT CLASSIFICATION (6 classes)                    │
 │  0 = NO_FAULT                                                   │
 │  1 = OVERCURRENT                                                │
 │  2 = OVERVOLTAGE                                                │
 │  3 = UNDERVOLTAGE                                               │
 │  4 = OVERTEMP                                                   │
 │  5 = VFO_FAULT                                                  │
-│  6 = RESISTANCE_DEGRADE                                         │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
@@ -204,10 +201,9 @@ The feature engineering **must match exactly** between Python training and C inf
 # Python (training)
 I_max = max(Ia, Ib, Ic)
 I_imbalance = max(Ia,Ib,Ic) - min(Ia,Ib,Ic)
-V_normalized = Vdc / 48.0
-Temp_normalized = Temp / 120.0
+V_normalized = Vdc / 340.0
+Temp_normalized = Temp / 125.0
 VFO_feedback = 1 if gate driver ON else 0
-R_normalized = R_winding - 1.0
 I_rms_estimate = sqrt((Ia**2 + Ib**2 + Ic**2) / 3)
 ```
 
@@ -216,10 +212,9 @@ I_rms_estimate = sqrt((Ia**2 + Ib**2 + Ic**2) / 3)
 float I_max = (Ia > Ib) ? Ia : Ib;
 I_max = (I_max > Ic) ? I_max : Ic;
 float I_imbalance = I_max - I_min;
-float V_normalized = Vdc / 48.0f;
-float Temp_normalized = Temp / 120.0f;
+float V_normalized = Vdc / 340.0f;
+float Temp_normalized = Temp / 125.0f;
 float VFO_feedback = (gate_driver_on) ? 1.0f : 0.0f;
-float R_normalized = R_winding - 1.0f;
 float I_rms_estimate = sqrtf(I_sq_sum);
 ```
 
@@ -324,6 +319,7 @@ float I_rms_estimate = sqrtf(I_sq_sum);
 |--------------|------|---------|----------|--------|
 | Dense(8)-Out | 1 KB | 10 µs | 82% | Too small, underfits |
 | **Dense(32)-Dense(64)** | **7 KB** | **40-60 µs** | **97%** | **Sweet spot ✓** |
+
 | Dense(64)-Dense(128) | 18 KB | 100+ µs | 98% | Oversized, latency budget |
 | CNN | 40+ KB | 200+ µs | 99% | Way too large |
 
@@ -367,12 +363,12 @@ def phase_unbalance_fault(self, n_samples=300):
         Ib = self.nominal['Ib'] + np.random.normal(0, 0.5)
         Ic = self.nominal['Ic'] + np.random.normal(0, 0.5)
         # ... rest normal ...
-    return np.array(data), np.full(n_samples, 7, dtype=int)  # Label 7: PHASE_UNBALANCE
+    return np.array(data), np.full(n_samples, 6, dtype=int)  # Label 6: PHASE_UNBALANCE
 ```
 
 Then update model output layer:
 ```python
-keras.layers.Dense(8, activation='softmax')  # Now 8 classes instead of 7
+keras.layers.Dense(7, activation='softmax')  # Now 7 classes instead of 6
 ```
 
 ### Use Real Sensor Calibration
@@ -385,7 +381,6 @@ Replace feature engineering nominal values with your actual hardware:
 #define NOMINAL_VBUS_V          50.3f    // Your actual nominal
 #define MAX_TEMP_C              125.0f   // Your actual max
 #define NOMINAL_VFO_HZ          16050    // Your actual VFO frequency
-#define NOMINAL_WINDING_R_PU    1.05f    // Your actual baseline
 ```
 
 ---
@@ -427,7 +422,7 @@ Replace feature engineering nominal values with your actual hardware:
 You now have:
 - ✅ **End-to-end ML pipeline** (training → quantization → deployment)
 - ✅ **Tiny model** (7 KB, runs in 40-60 µs, fits in 256 KB Flash)
-- ✅ **7-class fault classifier** (detects specific fault types)
+- ✅ **6-class fault classifier** (detects specific fault types)
 - ✅ **Hybrid architecture** (ML + rule-based for robustness)
 - ✅ **Validation tools** (accuracy checking, retraining framework)
 - ✅ **Production-ready code** (embedded C template + integration guide)

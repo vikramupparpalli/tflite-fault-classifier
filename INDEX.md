@@ -5,7 +5,7 @@
 A complete, production-ready TinyML fault classification system for your 16 kHz motor control interrupt loop.
 
 **Key Capabilities:**
-- 7-class fault detector (HEALTHY, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT, RESISTANCE_DEGRADE)
+- 6-class fault detector (HEALTHY, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT)
 - Real-time inference: 40-60 µs latency (within 62.5 µs budget ✓)
 - Tiny model: 7 KB (fits in 256 KB Flash with headroom ✓)
 - Synthetic training: Start immediately, no pre-collected data needed
@@ -41,13 +41,10 @@ motor_diagnostics_framework.md
 - Exports metadata (scaler, class names, features)
 
 #### 2. **phase_current_analyser.py**
-**Role:** Handles phase current, overcurrent, overvoltage, undervoltage, and persistent overcurrent/IPM stress data generation and feature extraction.
+**Role:** Handles phase current, overcurrent, overvoltage, and undervoltage data generation and feature extraction.
 
 #### 3. **ipm_vfo_analyser.py**
 **Role:** Handles IPM temperature and VFO feedback fault data generation and feature extraction.
-
-#### 4. **resistance_degrade_analyser.py**
-**Role:** Handles winding resistance degradation data generation and feature extraction.
 
 **How to run:**
 ```bash
@@ -128,7 +125,7 @@ fault_classifier_init();
 // In 16 kHz interrupt
 void tim_isr(void) {
     // ... read sensors ...
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
+    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     // ... rest of ISR ...
 }
 

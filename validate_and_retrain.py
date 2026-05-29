@@ -92,7 +92,7 @@ class TFLiteValidator:
         """
         Validate model on CSV data with ground truth labels.
         
-        CSV format: Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding, label
+        CSV format: Ia, Ib, Ic, Vdc, Temp, VFO_feedback, label
         
         Args:
             csv_path: Path to CSV file
@@ -104,7 +104,7 @@ class TFLiteValidator:
         df = pd.read_csv(csv_path)
         
         # Extract raw features and labels
-        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback', 'R_winding']].values
+        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback']].values
         y_true = df['label'].values
         
         # Engineer features
@@ -169,8 +169,8 @@ class RealDataRetrainer:
         """
         Load real-world fault data from CSV.
         
-        Format: Ia,Ib,Ic,Vdc,Temp,VFO_feedback,R_winding,label
-        
+        Format: Ia,Ib,Ic,Vdc,Temp,VFO_feedback,label
+
         Label mapping:
           0 = NO_FAULT
           1 = OVERCURRENT
@@ -178,11 +178,10 @@ class RealDataRetrainer:
           3 = UNDERVOLTAGE
           4 = OVERTEMP
           5 = VFO_FAULT
-          6 = RESISTANCE_DEGRADE
         """
         df = pd.read_csv(csv_path)
-        
-        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback', 'R_winding']].values
+
+        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback']].values
         y = df['label'].values
         
         # Engineer features (same as training)
@@ -260,8 +259,8 @@ class RealDataRetrainer:
         # Save metadata with new scaler
         info = {
             'model_type': 'TFLite quantized NN (retrained on real data)',
-            'input_features': 7,
-            'output_classes': 7,
+            'input_features': 6,
+            'output_classes': 6,
             'version': version,
             'scaler_mean': scaler.mean_.tolist(),
             'scaler_scale': scaler.scale_.tolist(),
@@ -272,7 +271,6 @@ class RealDataRetrainer:
                 'UNDERVOLTAGE',
                 'OVERTEMP',
                 'VFO_FAULT',
-                'RESISTANCE_DEGRADE'
             ],
             'feature_names': [
                 'I_max',
@@ -280,7 +278,6 @@ class RealDataRetrainer:
                 'V_normalized',
                 'Temp_normalized',
                 'VFO_feedback',
-                'R_normalized',
                 'I_rms_estimate'
             ]
         }

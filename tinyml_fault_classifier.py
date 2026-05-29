@@ -3,7 +3,7 @@ TinyML Fault Classifier for Motor Control System
 =================================================
 Synthetic training data generation + Keras model + TFLite quantization
 
-Predicts: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT, RESISTANCE_DEGRADE
+Predicts: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT
 
 Constraints:
   - Model size: < 50 KB (for 256 KB Flash with other code)
@@ -12,7 +12,7 @@ Constraints:
   - Use int8 quantization
 
 Architecture: Tiny 2-layer network
-  Input (7 features) → Dense(32, relu) → Dense(64, relu) → Output(7, softmax)
+  Input (6 features) → Dense(32, relu) → Dense(64, relu) → Output(6, softmax)
   ~4 KB model size, ~50 µs inference on ARM Cortex-M4
 """
 
@@ -25,7 +25,6 @@ import json
 
 from phase_current_analyser import PhaseCurrentAnalyser
 from ipm_vfo_analyser import IPMVFOAnalyser
-from resistance_degrade_analyser import ResistanceDegradeAnalyser
 
 
 # ============================================================================
@@ -46,7 +45,6 @@ class MotorFaultDataGenerator:
             'Vdc': 340.0,        # DC bus voltage (Volts)
             'Temp': 50.0,        # IPM temperature (°C)
             'VFO_feedback': 1,   # VFO feedback (1=ON, 0=OFF)
-            'R_winding': 3.5,    # Normalized winding resistance (per-unit)
         }
 
         self.limits = {
@@ -54,12 +52,10 @@ class MotorFaultDataGenerator:
             'Vdc_min': 190.0,
             'Vdc_max': 420.0,
             'Temp_max': 125.0,
-            'R_max_degrade': 6.0,
         }
 
         self.phase_current = PhaseCurrentAnalyser(self.nominal, self.limits)
         self.ipm_vfo = IPMVFOAnalyser(self.nominal, self.limits)
-        self.resistance = ResistanceDegradeAnalyser(self.nominal, self.limits)
 
     def generate_balanced_dataset(self):
         """Generate all fault types in a balanced dataset."""
@@ -70,7 +66,6 @@ class MotorFaultDataGenerator:
             self.phase_current.undervoltage_fault(n_samples=450),
             self.ipm_vfo.overtemp_fault(n_samples=600),
             self.ipm_vfo.vfo_fault(n_samples=300),
-            self.resistance.resistance_degrade_fault(n_samples=375),
         ]
 
         X = np.vstack([d[0] for d in datasets])
@@ -88,33 +83,30 @@ def engineer_features(X_raw):
     """
     Extract meaningful features from raw sensor inputs.
 
-    Raw inputs (7 features):
+    Raw inputs (6 features):
         - Ia, Ib, Ic (phase currents)
         - Vdc (DC bus voltage)
         - Temp (IPM temperature)
         - VFO_feedback (gate driver ON/OFF feedback, 1=ON, 0=OFF)
-        - R_winding (estimated winding resistance)
 
-    Engineered features (7):
+    Engineered features (6):
         - I_max          (PhaseCurrentAnalyser)
         - I_imbalance    (PhaseCurrentAnalyser)
         - V_normalized   (PhaseCurrentAnalyser)
         - Temp_normalized (IPMVFOAnalyser)
         - VFO_feedback   (IPMVFOAnalyser)
-        - R_normalized   (ResistanceDegradeAnalyser)
         - I_rms_estimate (PhaseCurrentAnalyser)
     """
     X_eng = np.zeros_like(X_raw)
 
     for i in range(len(X_raw)):
-        Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding = X_raw[i]
+        Ia, Ib, Ic, Vdc, Temp, VFO_feedback = X_raw[i]
 
         I_max, I_imbalance, V_normalized, I_rms_estimate = PhaseCurrentAnalyser.extract_features(Ia, Ib, Ic, Vdc)
         Temp_normalized, VFO_feedback_feat = IPMVFOAnalyser.extract_features(Temp, VFO_feedback)
-        R_normalized = ResistanceDegradeAnalyser.extract_features(R_winding)
 
         X_eng[i] = [I_max, I_imbalance, V_normalized, Temp_normalized,
-                    VFO_feedback_feat, R_normalized, I_rms_estimate]
+                    VFO_feedback_feat, I_rms_estimate]
 
     return X_eng
 
@@ -123,12 +115,12 @@ def engineer_features(X_raw):
 # 3. KERAS MODEL TRAINING
 # ============================================================================
 
-def build_tinyml_model(input_dim=7, num_classes=7):
+def build_tinyml_model(input_dim=6, num_classes=6):
     """
     Build tiny neural network for TFLite deployment.
 
     Architecture:
-      Input(7) → Dense(32, relu) → Dense(64, relu) → Dense(7, softmax)
+      Input(6) → Dense(32, relu) → Dense(64, relu) → Dense(6, softmax)
 
     Size estimate: ~4-6 KB (weights + biases)
     Latency estimate: ~30-50 µs on ARM Cortex-M4 @ 80 MHz
@@ -216,13 +208,12 @@ def export_model_info(model, X_scaler, filename='model_info.json'):
         "UNDERVOLTAGE",
         "OVERTEMP",
         "VFO_FAULT",
-        "RESISTANCE_DEGRADE"
     ]
 
     info = {
         'model_type': 'TFLite quantized NN',
-        'input_features': 7,
-        'output_classes': 7,
+        'input_features': 6,
+        'output_classes': 6,
         'label_names': label_names,
         'scaler_mean': X_scaler.mean_.tolist(),
         'scaler_scale': X_scaler.scale_.tolist(),
@@ -234,7 +225,6 @@ def export_model_info(model, X_scaler, filename='model_info.json'):
             'V_normalized',
             'Temp_normalized',
             'VFO_feedback',
-            'R_normalized',
             'I_rms_estimate'
         ]
     }

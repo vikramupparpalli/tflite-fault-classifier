@@ -29,8 +29,7 @@ class IPMVFOAnalyser:
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)
             Temp = self.nominal['Temp'] + t * (self.limits['Temp_max'] - self.nominal['Temp'])
             VFO_feedback = 1
-            R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback])
         return np.array(data), np.full(n_samples, 4, dtype=int)
 
     def vfo_fault(self, n_samples=200):
@@ -43,8 +42,7 @@ class IPMVFOAnalyser:
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
             VFO_feedback = 0 if np.random.rand() > 0.5 else 1
-            R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback])
         return np.array(data), np.full(n_samples, 5, dtype=int)
 
     @staticmethod

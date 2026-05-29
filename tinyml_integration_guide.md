@@ -5,7 +5,7 @@
 This guide walks you through training a tiny quantized neural network that predicts motor control system faults in real-time on your microcontroller.
 
 **Goals:**
-- 7-class classifier: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT, RESISTANCE_DEGRADE
+- 6-class classifier: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT
 - Model size: ~5-8 KB (quantized)
 - Inference latency: ~30-50 µs
 - Runs every 100 ms within your 16 kHz interrupt loop
@@ -47,7 +47,6 @@ X_raw, y = generator.generate_balanced_dataset()
 # - Undervoltage: 450
 # - Overtemp: 600
 # - VFO fault: 300
-# - Resistance degrade: 375
 ```
 
 **What each fault generator does:**
@@ -60,28 +59,25 @@ X_raw, y = generator.generate_balanced_dataset()
 | **Undervoltage** | Ramp Vdc from 48V → 36V | Brown-out condition |
 | **Overtemp** | Ramp Temp from 50°C → 120°C | Thermal runaway or blocked cooling |
 | **VFO fault** | Frequency deviates ±15%+ from 16 kHz | IPM signal loss or corruption |
-| **Resistance degrade** | Ramp R from 1.0 → 1.5 per-unit | Aging, insulation breakdown |
 
 ### 1.3 Feature Engineering
 
-The raw sensor inputs (7 values) are transformed into engineered features that are more informative for the neural network:
+The raw sensor inputs (6 values) are transformed into engineered features that are more informative for the neural network:
 
 ```
-Raw Inputs (7):
+Raw Inputs (6):
   Ia, Ib, Ic        ← Phase currents
   Vdc               ← DC bus
   Temp              ← IPM temperature
-  VFO_freq          ← Gate driver frequency
-  R_winding         ← Winding resistance
+  VFO_feedback      ← Gate driver ON/OFF feedback
 
-Engineered Features (7):
+Engineered Features (6):
   I_max             ← max(Ia, Ib, Ic)
   I_imbalance       ← max phase - min phase
-  V_normalized      ← Vdc / 48V
-    Temp_normalized   ← Temp / 120°C
-    VFO_feedback      ← 1 if gate driver ON, 0 if OFF
-    R_normalized      ← R - 1.0 (baseline)
-    I_rms_estimate    ← sqrt((Ia² + Ib² + Ic²) / 3)
+  V_normalized      ← Vdc / 340V
+  Temp_normalized   ← Temp / 125°C
+  VFO_feedback      ← 1 if gate driver ON, 0 if OFF
+  I_rms_estimate    ← sqrt((Ia² + Ib² + Ic²) / 3)
 ```
 
 This feature engineering **must be identical on the microcontroller** (see `engineer_features()` in C code).
@@ -97,11 +93,11 @@ python tinyml_fault_classifier.py
 # ======================================================================
 #
 # [1] Generating synthetic training data...
-#     Generated 4725 samples
-#     Class distribution: [1500  750  450  450  600  300  375]
+#     Generated 4050 samples
+#     Class distribution: [1500  750  450  450  600  300]
 #
 # [2] Engineering features...
-#     Feature matrix shape: (4725, 7)
+#     Feature matrix shape: (4050, 6)
 #
 # [3] Normalizing features...
 #     Mean: [ 10.5  1.2  1.0  0.42  0.5  0.05  10.3]
@@ -144,28 +140,26 @@ Output:
 ```json
 {
   "model_type": "TFLite quantized NN",
-  "input_features": 7,
-  "output_classes": 7,
+  "input_features": 6,
+  "output_classes": 6,
   "label_names": [
     "NO_FAULT",
     "OVERCURRENT",
     "OVERVOLTAGE",
     "UNDERVOLTAGE",
     "OVERTEMP",
-    "VFO_FAULT",
-    "RESISTANCE_DEGRADE"
+    "VFO_FAULT"
   ],
-  "scaler_mean": [10.5, 1.2, 1.0, 0.42, 0.0, 0.05, 10.3],
-  "scaler_scale": [2.8, 0.85, 0.18, 0.21, 0.05, 0.12, 2.9],
-    "feature_names": [
-        "I_max",
-        "I_imbalance",
-        "V_normalized",
-        "Temp_normalized",
-        "VFO_feedback",
-        "R_normalized",
-        "I_rms_estimate"
-    ]
+  "scaler_mean": [10.5, 1.2, 1.0, 0.42, 0.0, 10.3],
+  "scaler_scale": [2.8, 0.85, 0.18, 0.21, 0.05, 2.9],
+  "feature_names": [
+    "I_max",
+    "I_imbalance",
+    "V_normalized",
+    "Temp_normalized",
+    "VFO_feedback",
+    "I_rms_estimate"
+  ]
 }
 ```
 
@@ -336,11 +330,10 @@ void __attribute__((interrupt)) TIM1_IRQHandler(void) {
     float Ic = read_phase_current_c();
     float Vdc = read_dc_bus_voltage();
     float Temp = read_ipm_temperature();
-    float VFO_freq = measure_vfo_frequency();
-    float R_winding = estimate_winding_resistance();
-    
+    float VFO_feedback = read_vfo_feedback();
+
     // ===== Fault classification (every 100 ms = 1600 samples) =====
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding);
+    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     
     // ===== Rule-based diagnostics (your original thresholds) =====
     check_overcurrent(Ia, Ib, Ic);
@@ -383,7 +376,7 @@ After first week of real operation, validate:
 
 ```bash
 # Collect real-world fault data into CSV
-# Format: Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding, true_label
+# Format: Ia, Ib, Ic, Vdc, Temp, VFO_feedback, true_label
 
 python validate_tflite.py \
     --model fault_classifier.tflite \
@@ -457,15 +450,14 @@ On your microcontroller, log diagnostic data:
 ```c
 // Append to SD card or EEPROM every 100 ms
 void log_training_sample(void) {
-    // CSV format: Ia,Ib,Ic,Vdc,Temp,VFO_freq,R_winding,true_label
-    fprintf(log_file, "%.2f,%.2f,%.2f,%.2f,%.2f,%lu,%.3f,%d\n",
+    // CSV format: Ia,Ib,Ic,Vdc,Temp,VFO_feedback,true_label
+    fprintf(log_file, "%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n",
         sensor_data.Ia,
         sensor_data.Ib,
         sensor_data.Ic,
         sensor_data.Vdc,
         sensor_data.Temp,
-        (uint32_t)sensor_data.VFO_freq,
-        sensor_data.R_winding,
+        (int)sensor_data.VFO_feedback,
         human_verified_fault_label  // From service technician
     );
 }
@@ -602,7 +594,7 @@ If features are expensive to compute (e.g., FFT, filtering), cache them:
 
 ```c
 struct {
-    float features[7];
+    float features[6];
     uint32_t age_samples;
     bool valid;
 } cached_features;

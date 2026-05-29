@@ -9,8 +9,8 @@
  *   - ~40 KB RAM for model weights and working buffers
  * 
  * Model info:
- *   - Input: 7 features (int8 quantized)
- *   - Output: 7 class probabilities (int8)
+ *   - Input: 6 features (int8 quantized)
+ *   - Output: 6 class probabilities (int8)
  *   - Latency: ~30-50 µs on STM32 Cortex-M4 @ 80 MHz
  *   - Model size: ~5-8 KB
  */
@@ -41,7 +41,6 @@
 #define SCALER_MEAN_V_NORMALIZED     1.0f
 #define SCALER_MEAN_TEMP_NORMALIZED  0.42f
 #define SCALER_MEAN_VFO_FEEDBACK     1.0f
-#define SCALER_MEAN_R_NORMALIZED     0.05f
 #define SCALER_MEAN_I_RMS            10.3f
 
 #define SCALER_SCALE_I_MAX           2.8f
@@ -49,7 +48,6 @@
 #define SCALER_SCALE_V_NORMALIZED    0.18f
 #define SCALER_SCALE_TEMP_NORMALIZED 0.21f
 #define SCALER_SCALE_VFO_FEEDBACK    1.0f
-#define SCALER_SCALE_R_NORMALIZED    0.12f
 #define SCALER_SCALE_I_RMS           2.9f
 
 // Output class names
@@ -60,7 +58,6 @@ const char* FAULT_LABELS[] = {
     "UNDERVOLTAGE",
     "OVERTEMP",
     "VFO_FAULT",
-    "RESISTANCE_DEGRADE"
 };
 
 // ============================================================================
@@ -84,15 +81,14 @@ struct {
     float Vdc;                  // DC bus voltage (V)
     float Temp;                 // IPM temperature (°C)
     float VFO_feedback;         // Gate driver ON/OFF feedback (1=ON, 0=OFF)
-    float R_winding;            // Winding resistance (per-unit)
 } sensor_data;
 
 // Engineered features for model input
-float features[7];
+float features[6];
 
 // Model output
 uint8_t predicted_class = 0;
-int8_t class_scores[7];
+int8_t class_scores[6];
 
 // Inference statistics (optional, for diagnostics)
 struct {
@@ -163,20 +159,18 @@ int fault_classifier_init(void) {
  * Extract 7 engineered features from raw sensor measurements.
  * Must match the feature engineering done during training.
  * 
- * Raw inputs (7 values):
+ * Raw inputs (6 values):
  *   - Ia, Ib, Ic (phase currents in Amps)
  *   - Vdc (DC bus voltage in Volts)
  *   - Temp (IPM temperature in °C)
  *   - VFO_feedback (gate driver ON/OFF feedback)
- *   - R_winding (winding resistance in per-unit, where 1.0 = nominal)
- * 
- * Engineered features (7 values):
+ *
+ * Engineered features (6 values):
  *   - I_max: Maximum phase current
  *   - I_imbalance: Spread between phase currents
- *   - V_normalized: DC voltage as fraction of 48V nominal
- *   - Temp_normalized: Temperature as fraction of 120°C max
+ *   - V_normalized: DC voltage as fraction of 340V nominal
+ *   - Temp_normalized: Temperature as fraction of 125°C max
  *   - VFO_feedback: Pass-through ON/OFF feedback
- *   - R_normalized: Resistance increase from 1.0 baseline
  *   - I_rms_estimate: RMS current of three phases
  */
 void engineer_features(void) {
@@ -186,38 +180,33 @@ void engineer_features(void) {
     float Vdc = sensor_data.Vdc;
     float Temp = sensor_data.Temp;
     float VFO_feedback = sensor_data.VFO_feedback;
-    float R_winding = sensor_data.R_winding;
-    
+
     // Feature 1: Max phase current
     float I_max = (Ia > Ib) ? Ia : Ib;
     I_max = (I_max > Ic) ? I_max : Ic;
     features[0] = I_max;
-    
+
     // Feature 2: Phase current imbalance
     float I_min = (Ia < Ib) ? Ia : Ib;
     I_min = (I_min < Ic) ? I_min : Ic;
     float I_imbalance = I_max - I_min;
     features[1] = I_imbalance;
-    
-    // Feature 3: Voltage normalized (48V nominal)
+
+    // Feature 3: Voltage normalized (340V nominal)
     float V_normalized = Vdc / 340.0f;
     features[2] = V_normalized;
-    
-    // Feature 4: Temperature normalized (0-120°C)
+
+    // Feature 4: Temperature normalized (125°C max)
     float Temp_normalized = Temp / 125.0f;
     features[3] = Temp_normalized;
-    
+
     // Feature 5: VFO_feedback (pass-through, 1=ON, 0=OFF)
     features[4] = VFO_feedback;
-    
-    // Feature 6: Resistance normalized (1.0 baseline)
-    float R_normalized = R_winding - 1.0f;
-    features[5] = R_normalized;
-    
-    // Feature 7: RMS current estimate
+
+    // Feature 6: RMS current estimate
     float I_sq_sum = (Ia*Ia + Ib*Ib + Ic*Ic) / 3.0f;
     float I_rms_estimate = sqrtf(I_sq_sum);
-    features[6] = I_rms_estimate;
+    features[5] = I_rms_estimate;
 }
 
 // ============================================================================
@@ -230,36 +219,34 @@ void engineer_features(void) {
  */
 void scale_and_quantize_features(void) {
     // Scaling parameters (from StandardScaler during training)
-    float means[7] = {
+    float means[6] = {
         SCALER_MEAN_I_MAX,
         SCALER_MEAN_I_IMBALANCE,
         SCALER_MEAN_V_NORMALIZED,
         SCALER_MEAN_TEMP_NORMALIZED,
         SCALER_MEAN_VFO_FEEDBACK,
-        SCALER_MEAN_R_NORMALIZED,
         SCALER_MEAN_I_RMS
     };
-    
-    float scales[7] = {
+
+    float scales[6] = {
         SCALER_SCALE_I_MAX,
         SCALER_SCALE_I_IMBALANCE,
         SCALER_SCALE_V_NORMALIZED,
         SCALER_SCALE_TEMP_NORMALIZED,
         SCALER_SCALE_VFO_FEEDBACK,
-        SCALER_SCALE_R_NORMALIZED,
         SCALER_SCALE_I_RMS
     };
-    
+
     // Normalize: (x - mean) / scale
-    float scaled[7];
-    for (int i = 0; i < 7; i++) {
+    float scaled[6];
+    for (int i = 0; i < 6; i++) {
         scaled[i] = (features[i] - means[i]) / scales[i];
     }
-    
+
     // Quantize to int8: scale to [-128, 127] range
     // (Inverse of dequantization: value = (quantized - zero_point) * scale)
     // For simplicity, assume zero_point=0, scale=1/128 (from training)
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 6; i++) {
         int16_t q = (int16_t)roundf(scaled[i] * 128.0f);
         // Clamp to int8 range
         input_tensor->data.int8[i] = (q < -128) ? -128 : ((q > 127) ? 127 : (int8_t)q);
@@ -298,14 +285,14 @@ uint8_t run_inference(void) {
     }
     
     // 4. Get output probabilities
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 6; i++) {
         class_scores[i] = output_tensor->data.int8[i];
     }
-    
+
     // 5. Find max class (highest confidence)
     int8_t max_score = class_scores[0];
     predicted_class = 0;
-    for (int i = 1; i < 7; i++) {
+    for (int i = 1; i < 6; i++) {
         if (class_scores[i] > max_score) {
             max_score = class_scores[i];
             predicted_class = i;
@@ -348,14 +335,14 @@ struct {
  * Example:
  *   void __attribute__((interrupt)) tim1_handler(void) {
  *       // ... existing ADC reads, PWM updates, etc. ...
- *       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding);
+ *       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
  *       // ... rest of interrupt ...
  *   }
  */
 void fault_classifier_16khz_tick(
     float Ia, float Ib, float Ic,
     float Vdc, float Temp,
-    float VFO_feedback, float R_winding
+    float VFO_feedback
 ) {
     // Update sensor data
     sensor_data.Ia = Ia;
@@ -364,7 +351,6 @@ void fault_classifier_16khz_tick(
     sensor_data.Vdc = Vdc;
     sensor_data.Temp = Temp;
     sensor_data.VFO_feedback = VFO_feedback;
-    sensor_data.R_winding = R_winding;
     
     // Periodically run inference
     inference_control.sample_count++;
@@ -388,7 +374,7 @@ uint8_t get_fault_prediction(void) {
  * Get human-readable fault name.
  */
 const char* get_fault_name(uint8_t fault_class) {
-    if (fault_class < 7) {
+    if (fault_class < 6) {
         return FAULT_LABELS[fault_class];
     }
     return "UNKNOWN";
@@ -399,17 +385,17 @@ const char* get_fault_name(uint8_t fault_class) {
  * Returns 0-100 (percent).
  */
 uint8_t get_prediction_confidence(void) {
-    if (predicted_class >= 7) return 0;
-    
+    if (predicted_class >= 6) return 0;
+
     // Confidence = (max_score - mean_of_others) / scale
     int8_t max_score = class_scores[predicted_class];
     int32_t sum_others = 0;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 6; i++) {
         if (i != predicted_class) {
             sum_others += class_scores[i];
         }
     }
-    int8_t mean_other = sum_others / 6;
+    int8_t mean_other = sum_others / 5;
     
     // Rough confidence metric (0-100)
     int16_t confidence = 100 + (max_score - mean_other) / 2;
@@ -444,9 +430,9 @@ void print_inference_stats(void) {
  */
 void dump_features(void) {
     printf("Features: [");
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 6; i++) {
         printf("%.3f", features[i]);
-        if (i < 6) printf(", ");
+        if (i < 5) printf(", ");
     }
     printf("]\n");
 }
@@ -456,9 +442,9 @@ void dump_features(void) {
  */
 void dump_output_scores(void) {
     printf("Output scores: [");
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 6; i++) {
         printf("%d", class_scores[i]);
-        if (i < 6) printf(", ");
+        if (i < 5) printf(", ");
     }
     printf("]\n");
     printf("Prediction: %s (confidence: %d%%)\n",
