@@ -1,8 +1,15 @@
 # TinyML Motor Fault Classifier - Quick Reference
 
+
 ## What You Now Have
 
-A complete end-to-end ML pipeline for real-time fault classification on your motor control system:
+A modular end-to-end ML pipeline for real-time fault classification on your motor control system. Fault data generation and feature engineering are now handled by dedicated analyzer modules:
+
+- `phase_current_analyser.py`: Phase current, voltage, and related faults
+- `ipm_vfo_analyser.py`: IPM temperature and VFO feedback faults
+- `resistance_degrade_analyser.py`: Winding resistance degradation
+
+The main script (`tinyml_fault_classifier.py`) orchestrates these modules and delegates feature extraction to their static methods. Ensure any embedded implementation matches the logic in these analyzers.
 
 | Phase | What | File | Time |
 |-------|------|------|------|

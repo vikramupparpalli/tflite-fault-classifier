@@ -29,14 +29,25 @@ motor_diagnostics_framework.md
 
 ---
 
+
 ### TinyML Training Pipeline
 
 #### 1. **tinyml_fault_classifier.py** — Main Training Script
 **What it does:**
+- Orchestrates modular analyzer modules for each fault type
 - Generates 4,700+ synthetic fault samples (realistic failure scenarios)
 - Trains tiny 2-layer Keras model (Dense(32) → Dense(64) → Output)
 - Quantizes to int8 TFLite for microcontroller
 - Exports metadata (scaler, class names, features)
+
+#### 2. **phase_current_analyser.py**
+**Role:** Handles phase current, overcurrent, overvoltage, undervoltage, and persistent overcurrent/IPM stress data generation and feature extraction.
+
+#### 3. **ipm_vfo_analyser.py**
+**Role:** Handles IPM temperature and VFO feedback fault data generation and feature extraction.
+
+#### 4. **resistance_degrade_analyser.py**
+**Role:** Handles winding resistance degradation data generation and feature extraction.
 
 **How to run:**
 ```bash

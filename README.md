@@ -1,15 +1,27 @@
+
 # TinyML Motor Fault Classifier
 
 ## Overview
-This project provides a complete, production-ready TinyML fault classification system for real-time motor control diagnostics. It generates synthetic training data, trains a compact neural network, quantizes it for microcontroller deployment, and exports all necessary artifacts for embedded integration.
+This project provides a modular, production-ready TinyML fault classification system for real-time motor control diagnostics. It generates synthetic training data, trains a compact neural network, quantizes it for microcontroller deployment, and exports all necessary artifacts for embedded integration.
 
 **Key Features:**
+- Modular analyzers for each fault type (see below)
 - 7-class fault detection: HEALTHY, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT, RESISTANCE_DEGRADE
 - Real-time inference: 40–60 µs latency (fits 16 kHz interrupt loop)
 - Tiny model: ~7 KB (fits in 256 KB Flash)
 - Synthetic data generation—no pre-collected data required
 - Retraining and validation utilities
 - Hybrid ML + rule-based operation for robustness
+
+## Modular Analyzer Architecture
+
+The codebase is organized into analyzer modules, each responsible for generating synthetic data and extracting features for a specific fault domain:
+
+- **phase_current_analyser.py**: Phase current, overcurrent, overvoltage, undervoltage, and persistent overcurrent/IPM stress
+- **ipm_vfo_analyser.py**: IPM temperature and VFO feedback faults
+- **resistance_degrade_analyser.py**: Winding resistance degradation
+
+The main script (`tinyml_fault_classifier.py`) orchestrates these analyzers to generate a balanced dataset and delegates feature extraction to their static methods. This modular approach makes it easy to extend or customize fault logic.
 
 ## How to Build and Run
 
