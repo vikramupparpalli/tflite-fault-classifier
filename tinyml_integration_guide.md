@@ -78,10 +78,10 @@ Engineered Features (7):
   I_max             ← max(Ia, Ib, Ic)
   I_imbalance       ← max phase - min phase
   V_normalized      ← Vdc / 48V
-  Temp_normalized   ← Temp / 120°C
-  VFO_deviation     ← (freq - 16kHz) / 16kHz
-  R_normalized      ← R - 1.0 (baseline)
-  I_rms_estimate    ← sqrt((Ia² + Ib² + Ic²) / 3)
+    Temp_normalized   ← Temp / 120°C
+    VFO_feedback      ← 1 if gate driver ON, 0 if OFF
+    R_normalized      ← R - 1.0 (baseline)
+    I_rms_estimate    ← sqrt((Ia² + Ib² + Ic²) / 3)
 ```
 
 This feature engineering **must be identical on the microcontroller** (see `engineer_features()` in C code).
@@ -104,8 +104,8 @@ python tinyml_fault_classifier.py
 #     Feature matrix shape: (4725, 7)
 #
 # [3] Normalizing features...
-#     Mean: [ 10.5  1.2  1.0  0.42  0.0  0.05  10.3]
-#     Std: [ 2.8  0.85  0.18  0.21  0.05  0.12  2.9]
+#     Mean: [ 10.5  1.2  1.0  0.42  0.5  0.05  10.3]
+#     Std: [ 2.8  0.85  0.18  0.21  0.5  0.12  2.9]
 #
 # [4] Splitting dataset...
 #     Train: 3308, Val: 708, Test: 709
@@ -157,19 +157,21 @@ Output:
   ],
   "scaler_mean": [10.5, 1.2, 1.0, 0.42, 0.0, 0.05, 10.3],
   "scaler_scale": [2.8, 0.85, 0.18, 0.21, 0.05, 0.12, 2.9],
-  "feature_names": [
-    "I_max",
-    "I_imbalance",
-    "V_normalized",
-    "Temp_normalized",
-    "VFO_deviation",
-    "R_normalized",
-    "I_rms_estimate"
-  ]
+    "feature_names": [
+        "I_max",
+        "I_imbalance",
+        "V_normalized",
+        "Temp_normalized",
+        "VFO_feedback",
+        "R_normalized",
+        "I_rms_estimate"
+    ]
 }
 ```
 
 **⚠️ Critical:** Copy the `scaler_mean` and `scaler_scale` values into your C code (constants at top of `tflite_inference_template.c`).
+
+**Note:** `VFO_feedback` is a digital input: 1 if the gate driver is ON, 0 if OFF. No frequency or deviation calculation is needed.
 
 ---
 

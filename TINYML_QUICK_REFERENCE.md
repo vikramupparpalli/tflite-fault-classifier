@@ -78,10 +78,11 @@ int main(void) {
 void timer_interrupt(void) {
     // Read sensors
     float Ia = read_current_a();
-    // ... read Ib, Ic, Vdc, Temp, VFO_freq, R_winding ...
-    
-    // Call classifier (runs periodically, non-blocking)
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding);
+
+       // ... read Ib, Ic, Vdc, Temp, VFO_feedback, R_winding ...
+
+       // Call classifier (runs periodically, non-blocking)
+       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
     
     // Rest of ISR (motor control, PWM, etc)
 }
@@ -102,14 +103,14 @@ void timer_interrupt(void) {
 │  • Phase currents (Ia, Ib, Ic)                                  │
 │  • DC bus voltage (Vdc)                                         │
 │  • IPM temperature (Temp)                                       │
-│  • Gate driver frequency (VFO_freq)                             │
+│  • Gate driver feedback (VFO_feedback, ON/OFF)                  │
 │  • Winding resistance (R_winding, estimated or measured)        │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │    FEATURE ENGINEERING (7 engineered features)                  │
 │  • I_max, I_imbalance, V_normalized, Temp_normalized           │
-│  • VFO_deviation, R_normalized, I_rms_estimate                 │
+│  • VFO_feedback, R_normalized, I_rms_estimate                  │
 │  Time: ~2 µs                                                    │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
@@ -198,9 +199,9 @@ I_max = max(Ia, Ib, Ic)
 I_imbalance = max(Ia,Ib,Ic) - min(Ia,Ib,Ic)
 V_normalized = Vdc / 48.0
 Temp_normalized = Temp / 120.0
-VFO_deviation = (VFO_freq - 16000) / 16000
+VFO_feedback = 1 if gate driver ON else 0
 R_normalized = R_winding - 1.0
-I_rms_estimate = sqrt((Ia² + Ib² + Ic²) / 3)
+I_rms_estimate = sqrt((Ia**2 + Ib**2 + Ic**2) / 3)
 ```
 
 ```c
@@ -210,7 +211,7 @@ I_max = (I_max > Ic) ? I_max : Ic;
 float I_imbalance = I_max - I_min;
 float V_normalized = Vdc / 48.0f;
 float Temp_normalized = Temp / 120.0f;
-float VFO_deviation = (VFO_freq - 16000.0f) / 16000.0f;
+float VFO_feedback = (gate_driver_on) ? 1.0f : 0.0f;
 float R_normalized = R_winding - 1.0f;
 float I_rms_estimate = sqrtf(I_sq_sum);
 ```

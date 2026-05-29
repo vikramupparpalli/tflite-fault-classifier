@@ -36,23 +36,22 @@ class MotorFaultDataGenerator:
         
         # Nominal operating point (from your diagnostics framework)
         self.nominal = {
-            'Ia': 10.0,           # Phase current A (Amps)
-            'Ib': 10.0,           # Phase current B
-            'Ic': 10.0,           # Phase current C
-            'Vdc': 48.0,          # DC bus voltage (Volts)
+            'Ia': 7.0,           # Phase current A (Amps)
+            'Ib': 7.0,           # Phase current B
+            'Ic': 7.0,           # Phase current C
+            'Vdc': 340.0,          # DC bus voltage (Volts)
             'Temp': 50.0,         # IPM temperature (°C)
-            'VFO_freq': 16000,    # VFO frequency (Hz, 16 kHz nominal)
-            'R_winding': 1.0,     # Normalized winding resistance (per-unit)
+            'VFO_feedback': 1,    # VFO feedback (1=ON, 0=OFF)
+            'R_winding': 3.5,     # Normalized winding resistance (per-unit)
         }
         
         # Operating ranges
         self.limits = {
-            'Ia_max': 25.0,
-            'Vdc_min': 36.0,
-            'Vdc_max': 60.0,
-            'Temp_max': 120.0,
-            'VFO_tolerance': 0.1,  # ±10%
-            'R_max_degrade': 1.5,  # 50% increase
+            'Ia_max': 9.0,
+            'Vdc_min': 190.0,
+            'Vdc_max': 420.0,
+            'Temp_max': 125.0,
+            'R_max_degrade': 6.0,  
         }
     
     def healthy_operation(self, n_samples=1000):
@@ -65,7 +64,7 @@ class MotorFaultDataGenerator:
             
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 0.8)  # ±0.8V noise
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)  # ±2°C noise
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1  # Gate driver ON in healthy
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
             
             # Clamp to reasonable ranges
@@ -73,7 +72,7 @@ class MotorFaultDataGenerator:
             Vdc = np.clip(Vdc, self.limits['Vdc_min'], self.limits['Vdc_max'])
             Temp = np.clip(Temp, 0, self.limits['Temp_max'])
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.zeros(n_samples, dtype=int)  # Label 0: NO_FAULT
     
     def overcurrent_fault(self, n_samples=500):
@@ -88,10 +87,10 @@ class MotorFaultDataGenerator:
             
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)  # Normal voltage
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.ones(n_samples, dtype=int)  # Label 1: OVERCURRENT
     
     def overvoltage_fault(self, n_samples=300):
@@ -106,10 +105,10 @@ class MotorFaultDataGenerator:
             # Ramp voltage up to fault
             Vdc = self.nominal['Vdc'] + t * (self.limits['Vdc_max'] - self.nominal['Vdc'])
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.full(n_samples, 2, dtype=int)  # Label 2: OVERVOLTAGE
     
     def undervoltage_fault(self, n_samples=300):
@@ -124,10 +123,10 @@ class MotorFaultDataGenerator:
             # Ramp voltage down to fault
             Vdc = self.nominal['Vdc'] - t * (self.nominal['Vdc'] - self.limits['Vdc_min'])
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.full(n_samples, 3, dtype=int)  # Label 3: UNDERVOLTAGE
     
     def overtemp_fault(self, n_samples=400):
@@ -142,31 +141,25 @@ class MotorFaultDataGenerator:
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)
             # Ramp temperature up to fault
             Temp = self.nominal['Temp'] + t * (self.limits['Temp_max'] - self.nominal['Temp'])
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.full(n_samples, 4, dtype=int)  # Label 4: OVERTEMP
     
     def vfo_fault(self, n_samples=200):
-        """VFO loss or signal corruption: frequency out of spec."""
+        """VFO fault: Gate driver feedback OFF or toggling unexpectedly."""
         data = []
         for _ in range(n_samples):
             Ia = self.nominal['Ia'] + np.random.normal(0, 0.5)
             Ib = self.nominal['Ib'] + np.random.normal(0, 0.5)
             Ic = self.nominal['Ic'] + np.random.normal(0, 0.5)
-            
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
-            # VFO outside tolerance band
-            if np.random.rand() > 0.5:
-                VFO_freq = self.nominal['VFO_freq'] * (1 + self.limits['VFO_tolerance'] + np.random.uniform(0, 0.2))
-            else:
-                VFO_freq = self.nominal['VFO_freq'] * (1 - self.limits['VFO_tolerance'] - np.random.uniform(0, 0.2))
-            
+            # VFO_feedback OFF (0) or toggling (simulate with random 0/1)
+            VFO_feedback = 0 if np.random.rand() > 0.5 else 1
             R_winding = self.nominal['R_winding'] + np.random.normal(0, 0.02)
-            
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.full(n_samples, 5, dtype=int)  # Label 5: VFO_FAULT
     
     def resistance_degrade_fault(self, n_samples=250):
@@ -180,11 +173,11 @@ class MotorFaultDataGenerator:
             
             Vdc = self.nominal['Vdc'] + np.random.normal(0, 1.0)
             Temp = self.nominal['Temp'] + np.random.normal(0, 2.0)
-            VFO_freq = self.nominal['VFO_freq'] + np.random.normal(0, 100)
+            VFO_feedback = 1
             # Ramp resistance up to degradation threshold
             R_winding = self.nominal['R_winding'] + t * (self.limits['R_max_degrade'] - self.nominal['R_winding'])
             
-            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding])
+            data.append([Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding])
         return np.array(data), np.full(n_samples, 6, dtype=int)  # Label 6: RESISTANCE_DEGRADE
     
     def generate_balanced_dataset(self):
@@ -212,29 +205,29 @@ class MotorFaultDataGenerator:
 # ============================================================================
 
 def engineer_features(X_raw):
-    """
-    Extract meaningful features from raw sensor inputs.
-    
-    Raw inputs (7 features):
-      - Ia, Ib, Ic (phase currents)
-      - Vdc (DC bus voltage)
-      - Temp (IPM temperature)
-      - VFO_freq (gate driver frequency)
-      - R_winding (estimated winding resistance)
-    
-    Engineered features (still 7, but more informative):
-      - I_max (maximum phase current)
-      - I_imbalance (difference between max and min phase)
-      - V_normalized (Vdc as fraction of nominal)
-      - Temp_normalized
-      - VFO_deviation (frequency deviation from 16 kHz nominal)
-      - R_normalized (resistance increase from baseline)
-      - I_rms_estimate (rough current RMS)
-    """
+        """
+        Extract meaningful features from raw sensor inputs.
+
+        Raw inputs (7 features):
+                - Ia, Ib, Ic (phase currents)
+                - Vdc (DC bus voltage)
+                - Temp (IPM temperature)
+                - VFO_feedback (gate driver ON/OFF feedback, 1=ON, 0=OFF)
+                - R_winding (estimated winding resistance)
+
+        Engineered features (7):
+            - I_max (maximum phase current)
+            - I_imbalance (difference between max and min phase)
+            - V_normalized (Vdc as fraction of nominal)
+            - Temp_normalized (Temp as fraction of max)
+            - VFO_feedback (pass-through, 1=ON, 0=OFF)
+            - R_normalized (resistance increase from baseline)
+            - I_rms_estimate (rough current RMS)
+        """
     X_eng = np.zeros_like(X_raw)
     
     for i in range(len(X_raw)):
-        Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding = X_raw[i]
+        Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding = X_raw[i]
         
         # Feature 1: Max phase current
         I_max = np.max([Ia, Ib, Ic])
@@ -243,14 +236,14 @@ def engineer_features(X_raw):
         I_phases = np.array([Ia, Ib, Ic])
         I_imbalance = np.max(I_phases) - np.min(I_phases)
         
-        # Feature 3: Voltage normalized (48V nominal)
-        V_normalized = Vdc / 48.0
+        # Feature 3: Voltage normalized (340V nominal)
+        V_normalized = Vdc / 340.0
         
-        # Feature 4: Temperature normalized (0-120°C range)
-        Temp_normalized = Temp / 120.0
+        # Feature 4: Temperature normalized (0-125°C range)
+        Temp_normalized = Temp / 125.0
         
-        # Feature 5: VFO deviation (16 kHz nominal)
-        VFO_deviation = (VFO_freq - 16000) / 16000
+        # Feature 5: VFO_feedback (pass-through, 1=ON, 0=OFF)
+        VFO_feedback_feat = VFO_feedback
         
         # Feature 6: Resistance normalized (increase from 1.0 per-unit baseline)
         R_normalized = R_winding - 1.0
@@ -259,7 +252,7 @@ def engineer_features(X_raw):
         I_rms_estimate = np.sqrt((Ia**2 + Ib**2 + Ic**2) / 3.0)
         
         X_eng[i] = [I_max, I_imbalance, V_normalized, Temp_normalized, 
-                    VFO_deviation, R_normalized, I_rms_estimate]
+                VFO_feedback_feat, R_normalized, I_rms_estimate]
     
     return X_eng
 
@@ -320,23 +313,23 @@ def convert_to_tflite_quantized(model, X_train):
     """
     # Representative dataset for quantization
     X_quant = X_train[:100].astype(np.float32)
-    
+
     def representative_data_gen():
         for i in range(len(X_quant)):
             yield [X_quant[i:i+1]]
-    
+
     # Convert with quantization
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_data = representative_data_gen
+    converter.representative_dataset = representative_data_gen
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
     converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
-    
+
     tflite_model = converter.convert()
-    
+
     return tflite_model
 
 
@@ -386,7 +379,7 @@ def export_model_info(model, X_scaler, filename='model_info.json'):
             'I_imbalance',
             'V_normalized',
             'Temp_normalized',
-            'VFO_deviation',
+            'VFO_feedback',
             'R_normalized',
             'I_rms_estimate'
         ]

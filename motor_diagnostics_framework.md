@@ -102,35 +102,28 @@
 
 ---
 
-## 4. IPM VFO (GATE DRIVER) SIGNAL MONITORING
+## 4. IPM VFO (GATE DRIVER) FEEDBACK MONITORING
 
 ### 4.1 Detection Strategy
-- Monitor output enable / feedback from intelligent power module (IPM)
-- Verify communcation / handshake signals
-- Detect loss of drive readiness
+- Monitor digital ON/OFF feedback from intelligent power module (IPM) gate driver
+- Detect loss of drive readiness (OFF = fault)
 
 ### 4.2 Fault Conditions
 
-| Fault Type | Detection Logic | Threshold | Persistence | Action |
-|-----------|-----------------|-----------|-------------|--------|
-| **VFO signal loss** | No toggle or stuck logic level | Expected frequency ~1–100 kHz | 1–10 ms | Disable output; fault |
-| **VFO timing error** | Period outside expected band | ±10% nominal | 10 ms | Warning; may indicate IPM distress |
-| **IPM disable/fault pin** | Fault line from IPM pulled low | Logic level | Immediate | Stop; hardware-level shutdown |
-| **Communication timeout** | No heartbeat or ACK from IPM | Missing pulse train | 10–50 ms | Fault; assume IPM failure |
+| Fault Type | Detection Logic | Persistence | Action |
+|-----------|-----------------|-------------|--------|
+| **VFO feedback loss** | VFO_feedback = 0 (gate driver OFF) | 1–10 ms | Disable output; fault |
+| **IPM disable/fault pin** | Fault line from IPM pulled low | Immediate | Stop; hardware-level shutdown |
 
 ### 4.3 Data Handling
-- **Signal type**: Digital input (GPIO or capture timer)
-- **Capture method**: Use timer/capture on interrupt rising/falling edge, measure period
-- **Redundancy**: Cross-check with expected PWM frequency and duty cycle
+- **Signal type**: Digital input (GPIO)
+- **Logic**: Sample VFO_feedback every interrupt (1 = ON, 0 = OFF)
 - **Per-interrupt logic**:
   ```
-  On GPIO interrupt (or on each 16 kHz cycle check):
-    - Timestamp last VFO edge
-    - Calculate period since last edge
-    - Compare against expected frequency window
-    - Check for stuck-at-0 or stuck-at-1 over N cycles
-    - Timeout if no edges seen for T_timeout (e.g., 10 ms = 160 cycles)
-    - Set fault flag if out of spec
+  On each 16 kHz cycle:
+    - Read VFO_feedback (digital input)
+    - If VFO_feedback == 0 for >N cycles, set fault flag
+    - If VFO_feedback == 1, system OK
   ```
 
 ---
@@ -290,12 +283,15 @@ void interrupt_handler_16kHz(void) {
         vbus_high_count = 0;
     }
     
-    // ===== 4. VFO / Drive Signal Check =====
-    // (Checked on GPIO edge OR periodically in this loop)
-    uint32_t now = get_timer_count();
-    if (now - last_vfo_edge > VFO_TIMEOUT_SAMPLES) {
+    // ===== 4. VFO Feedback Check =====
+    if (VFO_feedback == 0) {
+      vfo_off_count++;
+      if (vfo_off_count > VFO_OFF_FAULT_SAMPLES) {
         set_fault_flag(FAULT_VFO_LOSS);
         disable_pwm();
+      }
+    } else {
+      vfo_off_count = 0;
     }
     
     // ===== 5. Winding Resistance (Periodic) =====

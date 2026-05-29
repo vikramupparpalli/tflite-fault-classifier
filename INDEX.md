@@ -117,7 +117,7 @@ fault_classifier_init();
 // In 16 kHz interrupt
 void tim_isr(void) {
     // ... read sensors ...
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding);
+    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
     // ... rest of ISR ...
 }
 

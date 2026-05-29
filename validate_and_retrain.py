@@ -1,4 +1,4 @@
-"""
+pip install numpy"""
 TinyML Model Validation & Retraining
 =====================================
 
@@ -92,7 +92,7 @@ class TFLiteValidator:
         """
         Validate model on CSV data with ground truth labels.
         
-        CSV format: Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding, label
+        CSV format: Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding, label
         
         Args:
             csv_path: Path to CSV file
@@ -104,7 +104,7 @@ class TFLiteValidator:
         df = pd.read_csv(csv_path)
         
         # Extract raw features and labels
-        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_freq', 'R_winding']].values
+        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback', 'R_winding']].values
         y_true = df['label'].values
         
         # Engineer features
@@ -169,7 +169,7 @@ class RealDataRetrainer:
         """
         Load real-world fault data from CSV.
         
-        Format: Ia,Ib,Ic,Vdc,Temp,VFO_freq,R_winding,label
+        Format: Ia,Ib,Ic,Vdc,Temp,VFO_feedback,R_winding,label
         
         Label mapping:
           0 = NO_FAULT
@@ -182,7 +182,7 @@ class RealDataRetrainer:
         """
         df = pd.read_csv(csv_path)
         
-        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_freq', 'R_winding']].values
+        X_raw = df[['Ia', 'Ib', 'Ic', 'Vdc', 'Temp', 'VFO_feedback', 'R_winding']].values
         y = df['label'].values
         
         # Engineer features (same as training)
@@ -279,7 +279,7 @@ class RealDataRetrainer:
                 'I_imbalance',
                 'V_normalized',
                 'Temp_normalized',
-                'VFO_deviation',
+                'VFO_feedback',
                 'R_normalized',
                 'I_rms_estimate'
             ]

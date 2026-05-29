@@ -40,7 +40,7 @@
 #define SCALER_MEAN_I_IMBALANCE      1.2f
 #define SCALER_MEAN_V_NORMALIZED     1.0f
 #define SCALER_MEAN_TEMP_NORMALIZED  0.42f
-#define SCALER_MEAN_VFO_DEVIATION    0.0f
+#define SCALER_MEAN_VFO_FEEDBACK     1.0f
 #define SCALER_MEAN_R_NORMALIZED     0.05f
 #define SCALER_MEAN_I_RMS            10.3f
 
@@ -48,7 +48,7 @@
 #define SCALER_SCALE_I_IMBALANCE     0.85f
 #define SCALER_SCALE_V_NORMALIZED    0.18f
 #define SCALER_SCALE_TEMP_NORMALIZED 0.21f
-#define SCALER_SCALE_VFO_DEVIATION   0.05f
+#define SCALER_SCALE_VFO_FEEDBACK    1.0f
 #define SCALER_SCALE_R_NORMALIZED    0.12f
 #define SCALER_SCALE_I_RMS           2.9f
 
@@ -83,7 +83,7 @@ struct {
     float Ia, Ib, Ic;           // Phase currents (A)
     float Vdc;                  // DC bus voltage (V)
     float Temp;                 // IPM temperature (°C)
-    float VFO_freq;             // Gate driver frequency (Hz)
+    float VFO_feedback;         // Gate driver ON/OFF feedback (1=ON, 0=OFF)
     float R_winding;            // Winding resistance (per-unit)
 } sensor_data;
 
@@ -167,7 +167,7 @@ int fault_classifier_init(void) {
  *   - Ia, Ib, Ic (phase currents in Amps)
  *   - Vdc (DC bus voltage in Volts)
  *   - Temp (IPM temperature in °C)
- *   - VFO_freq (gate driver frequency in Hz)
+ *   - VFO_feedback (gate driver ON/OFF feedback)
  *   - R_winding (winding resistance in per-unit, where 1.0 = nominal)
  * 
  * Engineered features (7 values):
@@ -175,7 +175,7 @@ int fault_classifier_init(void) {
  *   - I_imbalance: Spread between phase currents
  *   - V_normalized: DC voltage as fraction of 48V nominal
  *   - Temp_normalized: Temperature as fraction of 120°C max
- *   - VFO_deviation: Frequency deviation from 16 kHz nominal
+ *   - VFO_feedback: Pass-through ON/OFF feedback
  *   - R_normalized: Resistance increase from 1.0 baseline
  *   - I_rms_estimate: RMS current of three phases
  */
@@ -185,7 +185,7 @@ void engineer_features(void) {
     float Ic = sensor_data.Ic;
     float Vdc = sensor_data.Vdc;
     float Temp = sensor_data.Temp;
-    float VFO_freq = sensor_data.VFO_freq;
+    float VFO_feedback = sensor_data.VFO_feedback;
     float R_winding = sensor_data.R_winding;
     
     // Feature 1: Max phase current
@@ -200,16 +200,15 @@ void engineer_features(void) {
     features[1] = I_imbalance;
     
     // Feature 3: Voltage normalized (48V nominal)
-    float V_normalized = Vdc / 48.0f;
+    float V_normalized = Vdc / 340.0f;
     features[2] = V_normalized;
     
     // Feature 4: Temperature normalized (0-120°C)
-    float Temp_normalized = Temp / 120.0f;
+    float Temp_normalized = Temp / 125.0f;
     features[3] = Temp_normalized;
     
-    // Feature 5: VFO deviation (16 kHz nominal)
-    float VFO_deviation = (VFO_freq - 16000.0f) / 16000.0f;
-    features[4] = VFO_deviation;
+    // Feature 5: VFO_feedback (pass-through, 1=ON, 0=OFF)
+    features[4] = VFO_feedback;
     
     // Feature 6: Resistance normalized (1.0 baseline)
     float R_normalized = R_winding - 1.0f;
@@ -236,7 +235,7 @@ void scale_and_quantize_features(void) {
         SCALER_MEAN_I_IMBALANCE,
         SCALER_MEAN_V_NORMALIZED,
         SCALER_MEAN_TEMP_NORMALIZED,
-        SCALER_MEAN_VFO_DEVIATION,
+        SCALER_MEAN_VFO_FEEDBACK,
         SCALER_MEAN_R_NORMALIZED,
         SCALER_MEAN_I_RMS
     };
@@ -246,7 +245,7 @@ void scale_and_quantize_features(void) {
         SCALER_SCALE_I_IMBALANCE,
         SCALER_SCALE_V_NORMALIZED,
         SCALER_SCALE_TEMP_NORMALIZED,
-        SCALER_SCALE_VFO_DEVIATION,
+        SCALER_SCALE_VFO_FEEDBACK,
         SCALER_SCALE_R_NORMALIZED,
         SCALER_SCALE_I_RMS
     };
@@ -356,7 +355,7 @@ struct {
 void fault_classifier_16khz_tick(
     float Ia, float Ib, float Ic,
     float Vdc, float Temp,
-    float VFO_freq, float R_winding
+    float VFO_feedback, float R_winding
 ) {
     // Update sensor data
     sensor_data.Ia = Ia;
@@ -364,7 +363,7 @@ void fault_classifier_16khz_tick(
     sensor_data.Ic = Ic;
     sensor_data.Vdc = Vdc;
     sensor_data.Temp = Temp;
-    sensor_data.VFO_freq = VFO_freq;
+    sensor_data.VFO_feedback = VFO_feedback;
     sensor_data.R_winding = R_winding;
     
     // Periodically run inference

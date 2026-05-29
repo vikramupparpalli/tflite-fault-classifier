@@ -84,7 +84,7 @@ validator = TFLiteValidator(
 
 print("\nValidating on test data...")
 # Note: You'll need to create a test CSV with format:
-# Ia,Ib,Ic,Vdc,Temp,VFO_freq,R_winding,label
+# Ia,Ib,Ic,Vdc,Temp,VFO_feedback,R_winding,label
 
 metrics = validator.validate_on_csv('test_data.csv', engineer_features)
 
@@ -119,7 +119,7 @@ volatile float Ib_reading = 0;
 volatile float Ic_reading = 0;
 volatile float Vdc_reading = 0;
 volatile float Temp_reading = 0;
-volatile float VFO_freq = 16000;
+volatile float VFO_feedback = 1; // 1 = ON, 0 = OFF
 volatile float R_winding = 1.0;
 
 // Startup: Initialize classifier
@@ -147,7 +147,7 @@ void __attribute__((interrupt)) TIM1_UP_IRQHandler(void) {
     float Temp = Temp_reading;
     
     // ===== FAULT CLASSIFICATION (every 100 ms) =====
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding);
+    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding);
     
     // ===== GET LATEST PREDICTION =====
     // (prediction is updated every 100 ms, not every cycle)
@@ -208,18 +208,18 @@ Python (training):
 """
 
 def engineer_features_python(X_raw):
-    Ia, Ib, Ic, Vdc, Temp, VFO_freq, R_winding = X_raw[0]
+    Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding = X_raw[0]
     
     I_max = max(Ia, Ib, Ic)
     I_imbalance = max(Ia, Ib, Ic) - min(Ia, Ib, Ic)
     V_normalized = Vdc / 48.0
     Temp_normalized = Temp / 120.0
-    VFO_deviation = (VFO_freq - 16000) / 16000
+    VFO_feedback = 1 if VFO_feedback else 0
     R_normalized = R_winding - 1.0
     I_rms = (Ia**2 + Ib**2 + Ic**2) / 3.0) ** 0.5
     
     return [I_max, I_imbalance, V_normalized, Temp_normalized, 
-            VFO_deviation, R_normalized, I_rms]
+            VFO_feedback, R_normalized, I_rms]
 
 
 """
@@ -232,7 +232,7 @@ void engineer_features(void) {
     float Ic = sensor_data.Ic;
     float Vdc = sensor_data.Vdc;
     float Temp = sensor_data.Temp;
-    float VFO_freq = sensor_data.VFO_freq;
+    float VFO_feedback = sensor_data.VFO_feedback; // 1 = ON, 0 = OFF
     float R_winding = sensor_data.R_winding;
     
     // Feature 1: Max phase current
@@ -254,9 +254,9 @@ void engineer_features(void) {
     float Temp_normalized = Temp / 120.0f;
     features[3] = Temp_normalized;
     
-    // Feature 5: VFO deviation (16 kHz nominal)
-    float VFO_deviation = (VFO_freq - 16000.0f) / 16000.0f;
-    features[4] = VFO_deviation;
+    // Feature 5: VFO feedback (ON/OFF)
+    float VFO_feedback_feature = (VFO_feedback != 0) ? 1.0f : 0.0f;
+    features[4] = VFO_feedback_feature;
     
     // Feature 6: Resistance normalized (1.0 baseline)
     float R_normalized = R_winding - 1.0f;
