@@ -1,0 +1,127 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+debug.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+
+# VS Code
+.vscode/
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.out
+*.a
+*.lib
+*.dll
+*.exe
+*.d
+*.dep
+*.cmd
+*.suo
+*.idb
+*.pdb
+*.ilk
+*.exp
+*.log
+*.sdf
+*.ipch
+*.aps
+*.ncb
+*.opendb
+*.tlog
+*.user
+*.unsaved
+*.swp
+*.swo
+*.bak
+*.tmp
+*.DS_Store
+
+# Model and generated files
+fault_classifier.tflite
+fault_classifier_keras.h5
+model_data.h
+model_info.json
+*.pb
+*.onnx
+
+# TensorFlow Lite Micro library (if cloned)
+lib/tflite-micro/
+
+# Other generated libraries
+*.a
+*.so
+*.dylib
+*.dll
+
+# Ignore virtual environments
+venv/
+.venv/
+ENV/
+
+# Ignore CSVs and logs that can be regenerated
+*.csv
+*.log
+
+# Ignore core dumps
+core.*
+
+# Ignore backup files
+*~
+*.bak
+
+# Ignore test outputs
+/test_output/

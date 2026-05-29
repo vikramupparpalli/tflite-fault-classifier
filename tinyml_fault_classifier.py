@@ -205,55 +205,55 @@ class MotorFaultDataGenerator:
 # ============================================================================
 
 def engineer_features(X_raw):
-        """
-        Extract meaningful features from raw sensor inputs.
+    """
+    Extract meaningful features from raw sensor inputs.
 
-        Raw inputs (7 features):
-                - Ia, Ib, Ic (phase currents)
-                - Vdc (DC bus voltage)
-                - Temp (IPM temperature)
-                - VFO_feedback (gate driver ON/OFF feedback, 1=ON, 0=OFF)
-                - R_winding (estimated winding resistance)
+    Raw inputs (7 features):
+        - Ia, Ib, Ic (phase currents)
+        - Vdc (DC bus voltage)
+        - Temp (IPM temperature)
+        - VFO_feedback (gate driver ON/OFF feedback, 1=ON, 0=OFF)
+        - R_winding (estimated winding resistance)
 
-        Engineered features (7):
-            - I_max (maximum phase current)
-            - I_imbalance (difference between max and min phase)
-            - V_normalized (Vdc as fraction of nominal)
-            - Temp_normalized (Temp as fraction of max)
-            - VFO_feedback (pass-through, 1=ON, 0=OFF)
-            - R_normalized (resistance increase from baseline)
-            - I_rms_estimate (rough current RMS)
-        """
+    Engineered features (7):
+        - I_max (maximum phase current)
+        - I_imbalance (difference between max and min phase)
+        - V_normalized (Vdc as fraction of nominal)
+        - Temp_normalized (Temp as fraction of max)
+        - VFO_feedback (pass-through, 1=ON, 0=OFF)
+        - R_normalized (resistance increase from baseline)
+        - I_rms_estimate (rough current RMS)
+    """
     X_eng = np.zeros_like(X_raw)
-    
+
     for i in range(len(X_raw)):
         Ia, Ib, Ic, Vdc, Temp, VFO_feedback, R_winding = X_raw[i]
-        
+
         # Feature 1: Max phase current
         I_max = np.max([Ia, Ib, Ic])
-        
+
         # Feature 2: Current imbalance (spread between phases)
         I_phases = np.array([Ia, Ib, Ic])
         I_imbalance = np.max(I_phases) - np.min(I_phases)
-        
+
         # Feature 3: Voltage normalized (340V nominal)
         V_normalized = Vdc / 340.0
-        
+
         # Feature 4: Temperature normalized (0-125°C range)
         Temp_normalized = Temp / 125.0
-        
+
         # Feature 5: VFO_feedback (pass-through, 1=ON, 0=OFF)
         VFO_feedback_feat = VFO_feedback
-        
+
         # Feature 6: Resistance normalized (increase from 1.0 per-unit baseline)
         R_normalized = R_winding - 1.0
-        
+
         # Feature 7: Rough RMS current estimate
         I_rms_estimate = np.sqrt((Ia**2 + Ib**2 + Ic**2) / 3.0)
-        
+
         X_eng[i] = [I_max, I_imbalance, V_normalized, Temp_normalized, 
-                VFO_feedback_feat, R_normalized, I_rms_estimate]
-    
+                    VFO_feedback_feat, R_normalized, I_rms_estimate]
+
     return X_eng
 
 
