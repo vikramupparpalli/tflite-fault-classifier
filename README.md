@@ -7,7 +7,7 @@ This project provides a modular, production-ready TinyML fault classification sy
 **Key Features:**
 - Modular analyzers for each fault type (see below)
 - 6-class fault detection: HEALTHY, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT
-- Real-time inference: 40–60 µs latency (fits 16 kHz interrupt loop)
+- Real-time inference: 40–60 µs latency (fits 8 kHz foreground_loop)
 - Tiny model: ~7 KB (fits in 256 KB Flash)
 - Synthetic data generation—no pre-collected data required
 - Retraining and validation utilities

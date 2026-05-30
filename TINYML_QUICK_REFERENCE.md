@@ -15,7 +15,7 @@ The main script (`tinyml_fault_classifier.py`) orchestrates these modules and de
 | **Training** | Generate synthetic faults, train Keras model, quantize to TFLite | `tinyml_fault_classifier.py` | 5 min |
 | **Validation** | Test model accuracy, confusion matrix, confidence analysis | `validate_and_retrain.py` | 2 min |
 | **Embedded** | Inference code for microcontroller (features, quantization, inference) | `tflite_inference_template.c` | - |
-| **Integration** | Detailed steps to build firmware, run 16 kHz loop, hybrid diagnostics | `tinyml_integration_guide.md` | - |
+| **Integration** | Detailed steps to build firmware, run 8 kHz foreground_loop, hybrid diagnostics | `tinyml_integration_guide.md` | - |
 | **Retraining** | Fine-tune with real fault data from your system | `validate_and_retrain.py` | varies |
 
 ---
@@ -72,7 +72,7 @@ xxd -i fault_classifier.tflite > model_data.h
 
 int main(void) {
     fault_classifier_init();  // Initialize TFLite interpreter
-    start_16khz_timer();
+    start_foreground_loop();
     while(1) {
         // ... your app ...
         uint8_t fault = get_fault_prediction();
@@ -80,17 +80,17 @@ int main(void) {
     }
 }
 
-// In 16 kHz interrupt handler
-void timer_interrupt(void) {
+// In 8 kHz foreground_loop
+void foreground_loop(void) {
     // Read sensors
     float Ia = read_current_a();
 
        // ... read Ib, Ic, Vdc, Temp, VFO_feedback ...
 
        // Call classifier (runs periodically, non-blocking)
-       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
-    
-    // Rest of ISR (motor control, PWM, etc)
+       fault_classifier_foreground_loop_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
+
+    // Rest of foreground_loop (motor control, PWM, etc)
 }
 ```
 
@@ -100,8 +100,8 @@ void timer_interrupt(void) {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    16 kHz INTERRUPT LOOP                        │
-│  (every 62.5 µs)                                                │
+│                    8 kHz FOREGROUND LOOP                        │
+│  (every 125 µs)                                                 │
 └──────────────────────────────┬──────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
@@ -132,7 +132,7 @@ void timer_interrupt(void) {
 │  • Input: 6 int8 values                                         │
 │  • Output: 6 class scores (int8)                                │
 │  Time: ~40-60 µs on Cortex-M4 @ 80 MHz                         │
-│  (Runs every 100 ms = 1600 samples, non-blocking)              │
+│  (Runs every 100 ms = 800 samples, non-blocking)               │
 └──────────────────────────┬───────────────────────────────────────┘
        ↓
 ┌──────────────────────────────────────────────────────────────────┐
@@ -175,7 +175,7 @@ Total in Flash:                       ~146 KB (out of 256 KB) ✓
 Headroom:                             ~110 KB for your app
 ```
 
-### Latency Budget (62.5 µs per cycle at 16 kHz)
+### Latency Budget (125 µs per cycle at 8 kHz)
 ```
 Sensor reads:              ~3 µs
 ADC conversion:            ~2 µs
@@ -186,10 +186,10 @@ PWM update:               ~10 µs
 ────────────────────────
 Total:                    ~30-50 µs (baseline)
                           ~70-80 µs (when inference runs)
-                          Still within 62.5 µs window (worst case)
+                          Well within 125 µs window ✓
 ```
 
-**Note:** Inference doesn't run every cycle—only every 100 ms (1600 samples), so actual cycle time averages <40 µs.
+**Note:** Inference doesn't run every cycle—only every 100 ms (800 samples), so actual cycle time averages <40 µs.
 
 ---
 
@@ -234,8 +234,8 @@ float I_rms_estimate = sqrtf(I_sq_sum);
 - [ ] TensorFlow Lite Micro library added to project
 - [ ] `tflite_inference_template.c` integrated and renamed
 - [ ] `fault_classifier_init()` called at startup
-- [ ] `fault_classifier_16khz_tick()` called from interrupt handler
-- [ ] Latency profiled and verified < 62.5 µs
+- [ ] `fault_classifier_foreground_loop_tick()` called from foreground_loop
+- [ ] Latency profiled and verified < 125 µs
 - [ ] Hybrid operation (ML + rules) tested
 
 ### Validation
@@ -285,7 +285,7 @@ float I_rms_estimate = sqrtf(I_sq_sum);
 - **Purpose:** Run TFLite model on microcontroller
 - **Key Functions:**
   - `fault_classifier_init()` — Initialize at startup
-  - `fault_classifier_16khz_tick()` — Call from interrupt handler
+  - `fault_classifier_foreground_loop_tick()` — Call from foreground_loop
   - `get_fault_prediction()` — Get latest classification
   - `get_fault_name()` — Get human-readable fault name
 - **Integration:** Copy into your firmware, implement `get_microseconds()` stub
@@ -331,7 +331,7 @@ float I_rms_estimate = sqrtf(I_sq_sum);
 
 ### Inference Frequency: Why Every 100 ms?
 
-- **Every cycle (62.5 µs):** Violates latency budget
+- **Every cycle (125 µs):** Consumes most of the cycle budget
 - **Every 100 ms:** ~10 Hz update, captures fault evolution ✓
 - **Every 500 ms:** Slower to detect rapid faults
 - **Every second:** Too slow for safety-critical response
@@ -389,7 +389,7 @@ Replace feature engineering nominal values with your actual hardware:
 
 | Problem | Likely Cause | Fix |
 |---------|--------------|-----|
-| Inference latency > 62.5 µs | Inference too slow or running every cycle | Increase interval to every 200 ms |
+| Inference latency > 125 µs | Inference too slow or running every cycle | Increase interval to every 200 ms |
 | Model won't fit in Flash | Model too large | Reduce layers (Dense(16)-Dense(32)) or use 4-bit quantization |
 | Low accuracy on real data | Synthetic data doesn't match reality | Collect real faults and retrain |
 | "Model version mismatch" | TFLite schema mismatch | Update TensorFlow version to match |

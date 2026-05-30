@@ -1,7 +1,7 @@
 /*
  * Motor Control Fault Classifier - TFLite Micro Inference
  * 
- * Integrates quantized TinyML model into 16 kHz interrupt loop
+ * Integrates quantized TinyML model into 8 kHz foreground_loop
  * 
  * Requirements:
  *   - TensorFlow Lite for Microcontrollers (tfLite Micro)
@@ -103,7 +103,7 @@ struct {
 
 /**
  * Initialize TFLite Micro interpreter.
- * Call this once at startup, before 16 kHz loop begins.
+ * Call this once at startup, before foreground_loop begins.
  */
 int fault_classifier_init(void) {
     tflite::InitializeTarget();
@@ -311,35 +311,35 @@ uint8_t run_inference(void) {
 }
 
 // ============================================================================
-// INTEGRATION WITH 16 kHz LOOP
+// INTEGRATION WITH 8 kHz FOREGROUND LOOP
 // ============================================================================
 
 /**
  * Global inference control
  */
 struct {
-    uint32_t sample_interval;  // Run inference every N samples (e.g., 1600 = every 100 ms)
+    uint32_t sample_interval;  // Run inference every N samples (e.g., 800 = every 100 ms)
     uint32_t sample_count;
     uint8_t last_prediction;
     uint32_t prediction_age_samples;
 } inference_control = {
-    .sample_interval = 1600,  // 100 ms at 16 kHz = 1600 samples
+    .sample_interval = 800,  // 100 ms at 8 kHz = 800 samples
     .sample_count = 0,
     .last_prediction = 0,
     .prediction_age_samples = 0
 };
 
 /**
- * Call from within your 16 kHz interrupt handler.
- * 
+ * Call from within your 8 kHz foreground_loop.
+ *
  * Example:
- *   void __attribute__((interrupt)) tim1_handler(void) {
+ *   void foreground_loop_handler(void) {
  *       // ... existing ADC reads, PWM updates, etc. ...
- *       fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
- *       // ... rest of interrupt ...
+ *       fault_classifier_foreground_loop_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
+ *       // ... rest of foreground_loop ...
  *   }
  */
-void fault_classifier_16khz_tick(
+void fault_classifier_foreground_loop_tick(
     float Ia, float Ib, float Ic,
     float Vdc, float Temp,
     float VFO_feedback
@@ -421,8 +421,8 @@ void print_inference_stats(void) {
     printf("  Total inferences: %lu\n", inference_stats.inference_count);
     printf("  Avg latency: %lu µs\n", avg_us);
     printf("  Max latency: %lu µs\n", inference_stats.max_us);
-    printf("  Budget: 62.5 µs (%.1f%% used)\n", 
-           (float)avg_us / 62.5f * 100.0f);
+    printf("  Budget: 125 µs (%.1f%% used)\n",
+           (float)avg_us / 125.0f * 100.0f);
 }
 
 /**

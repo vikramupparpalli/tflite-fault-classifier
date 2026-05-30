@@ -1,7 +1,7 @@
 # Motor Control Diagnostics Module - Organizational Framework
 
 ## System Parameters
-- **Interrupt frequency**: 16 kHz (62.5 µs per sample)
+- **Loop frequency**: 8 kHz (125 µs per sample)
 - **Diagnostic scope**: 4 monitored conditions
 - **Output**: Fault flags, warning states, and control actions
 
@@ -10,7 +10,7 @@
 ## 1. PHASE CURRENT MONITORING
 
 ### 1.1 Detection Strategy
-- Sample three phase currents (Ia, Ib, Ic) at each interrupt
+- Sample three phase currents (Ia, Ib, Ic) at each foreground_loop cycle
 - Check against two thresholds: **sustainable** and **peak/transient**
 - Apply filtering for noise rejection
 
@@ -18,17 +18,17 @@
 
 | Fault Type | Detection Logic | Threshold | Persistence | Action |
 |-----------|-----------------|-----------|-------------|--------|
-| **Over-current (sustained)** | RMS or moving average of Ia, Ib, Ic | Peak_threshold (e.g. 1.5× nominal) | 1–5 ms (16–80 samples) | Reduce torque command; log |
+| **Over-current (sustained)** | RMS or moving average of Ia, Ib, Ic | Peak_threshold (e.g. 1.5× nominal) | 1–5 ms (8–40 samples) | Reduce torque command; log |
 | **Over-current (transient)** | Single sample max | Peak_peak_threshold (e.g. 2× nominal) | Immediate or after N samples | Soft current limit, no shutdown |
-| **Phase imbalance** | Difference between max/min phase | Imbalance_threshold (e.g. 0.3A) | 10 ms+ | Flag abnormal, investigate |
-| **Missing phase** | Detection of zero current in one phase | Current_min_threshold | 100 µs (few samples) | Fault (commutation hazard) |
+| **Phase imbalance** | Difference between max/min phase | Imbalance_threshold (e.g. 0.3A) | 10 ms+ (80+ samples) | Flag abnormal, investigate |
+| **Missing phase** | Detection of zero current in one phase | Current_min_threshold | 125 µs (~1 sample) | Fault (commutation hazard) |
 
 ### 1.3 Data Handling
-- **Filtering**: Low-pass IIR or moving-average window (4–16 sample window = 0.25–1 ms)
+- **Filtering**: Low-pass IIR or moving-average window (2–8 sample window = 0.25–1 ms)
 - **Quantization**: 12–16 bit ADC; scale to engineering units (Amps)
-- **Per-interrupt logic**: 
+- **Per-cycle logic**: 
   ```
-  On each 16 kHz interrupt:
+  On each 8 kHz foreground_loop cycle:
     - Read raw ADC samples
     - Convert to Amps
     - Update moving-average register
@@ -58,9 +58,9 @@
 ### 2.3 Data Handling
 - **Filtering**: IIR first-order or moving-average (especially important for thermal slow dynamics)
 - **Thermal time constant**: ~100–500 ms typical → use longer averaging window (100+ samples)
-- **Per-interrupt logic**:
+- **Per-cycle logic**:
   ```
-  On each 16 kHz interrupt (every 62.5 µs):
+  On each 8 kHz foreground_loop cycle (every 125 µs):
     - Read temperature ADC (may not update every cycle—sensor update rate ~1 kHz)
     - Update running average / IIR estimate
     - Calculate dT/dt from differentiation window
@@ -87,10 +87,10 @@
 | **Voltage ripple** | Peak-to-peak variation | Ripple_max (spec-dependent) | Continuous monitor | Log diagnostic; not usually fault |
 
 ### 3.3 Data Handling
-- **Update rate**: DC bus voltage changes slowly; sample every cycle (62.5 µs)
+- **Update rate**: DC bus voltage changes slowly; sample every cycle (125 µs)
 - **Filtering**: Light filtering (4–8 sample moving-avg) to reject switching noise
 - **Hysteresis**: For over/under-voltage, use hysteresis band (e.g., +0.5V margin on recovery)
-- **Per-interrupt logic**:
+- **Per-cycle logic**:
   ```
   On each interrupt:
     - Read Vdc ADC
@@ -117,10 +117,10 @@
 
 ### 4.3 Data Handling
 - **Signal type**: Digital input (GPIO)
-- **Logic**: Sample VFO_feedback every interrupt (1 = ON, 0 = OFF)
-- **Per-interrupt logic**:
+- **Logic**: Sample VFO_feedback every foreground_loop cycle (1 = ON, 0 = OFF)
+- **Per-cycle logic**:
   ```
-  On each 16 kHz cycle:
+  On each 8 kHz foreground_loop cycle:
     - Read VFO_feedback (digital input)
     - If VFO_feedback == 0 for >N cycles, set fault flag
     - If VFO_feedback == 1, system OK
@@ -164,8 +164,8 @@ NORMAL
 ## 6. INTERRUPT LOOP PSEUDOCODE
 
 ```c
-// 16 kHz timer interrupt (every 62.5 µs)
-void interrupt_handler_16kHz(void) {
+// 8 kHz foreground_loop (every 125 µs)
+void foreground_loop_handler(void) {
     
     // ===== Read ADC inputs =====
     uint16_t adc_Ia = read_adc(CH_IA);
@@ -298,7 +298,7 @@ struct WarningStatus {
 
 ## 8. TIMING & PRIORITIZATION
 
-### Execution Priority (within 62.5 µs window)
+### Execution Priority (within 125 µs window)
 1. **Critical (immediate check)**: VFO signal, voltage extremes → disable safety
 2. **High (first half)**: Phase currents, temperature → set warnings
 3. **Medium (every few cycles)**: Averaging updates, state machine transitions
@@ -310,7 +310,7 @@ struct WarningStatus {
 - State transitions & flags: ~5 µs
 - Logging / buffer updates: ~5 µs
 - PWM output & control: ~30 µs
-- **Total safety margin**: ~10 µs (plenty of headroom for 62.5 µs cycle)
+- **Total safety margin**: ~70 µs (plenty of headroom for 125 µs cycle)
 
 ---
 
@@ -350,7 +350,7 @@ struct WarningStatus {
 - [ ] VFO timeout: Disable drive signal; verify fault flag within 10 ms
 - [ ] Hysteresis: Confirm no chatter near thresholds
 - [ ] State recovery: Verify fault → idle transition and reset conditions
-- [ ] Latency: Confirm all critical checks complete within 16 kHz cycle
+- [ ] Latency: Confirm all critical checks complete within 8 kHz foreground_loop cycle
 - [ ] Logging: Verify events timestamped and non-blocking
 
 ---

@@ -8,7 +8,7 @@ This guide walks you through training a tiny quantized neural network that predi
 - 6-class classifier: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT
 - Model size: ~5-8 KB (quantized)
 - Inference latency: ~30-50 µs
-- Runs every 100 ms within your 16 kHz interrupt loop
+- Runs every 100 ms within your 8 kHz foreground_loop
 
 ---
 
@@ -58,7 +58,7 @@ X_raw, y = generator.generate_balanced_dataset()
 | **Overvoltage** | Ramp Vdc from 48V → 60V | Supply overshoot or inverter fault |
 | **Undervoltage** | Ramp Vdc from 48V → 36V | Brown-out condition |
 | **Overtemp** | Ramp Temp from 50°C → 120°C | Thermal runaway or blocked cooling |
-| **VFO fault** | Frequency deviates ±15%+ from 16 kHz | IPM signal loss or corruption |
+| **VFO fault** | Frequency deviates ±15%+ from 8 kHz | IPM signal loss or corruption |
 
 ### 1.3 Feature Engineering
 
@@ -300,8 +300,8 @@ int main(void) {
         // Optionally: disable adaptive diagnostics, fall back to rule-based thresholds
     }
     
-    // Start 16 kHz timer/interrupt
-    start_16khz_timer();
+    // Start 8 kHz foreground_loop
+    start_foreground_loop();
     
     // Main loop
     while (1) {
@@ -315,14 +315,12 @@ int main(void) {
 }
 ```
 
-### 3.5 Call from 16 kHz Interrupt
+### 3.5 Call from 8 kHz foreground_loop
 
 ```c
-// motor_control.c - 16 kHz timer interrupt handler
+// motor_control.c - 8 kHz foreground_loop handler
 
-void __attribute__((interrupt)) TIM1_IRQHandler(void) {
-    // Clear interrupt flag
-    TIM1->SR &= ~TIM_SR_UIF;
+void foreground_loop_handler(void) {
     
     // ===== Read ADC samples =====
     float Ia = read_phase_current_a();
@@ -332,8 +330,8 @@ void __attribute__((interrupt)) TIM1_IRQHandler(void) {
     float Temp = read_ipm_temperature();
     float VFO_feedback = read_vfo_feedback();
 
-    // ===== Fault classification (every 100 ms = 1600 samples) =====
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
+    // ===== Fault classification (every 100 ms = 800 samples) =====
+    fault_classifier_foreground_loop_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     
     // ===== Rule-based diagnostics (your original thresholds) =====
     check_overcurrent(Ia, Ib, Ic);
@@ -345,7 +343,7 @@ void __attribute__((interrupt)) TIM1_IRQHandler(void) {
     update_pwm_duty(torque_command);
     update_phase_commutation();
     
-    // Total cycle: ~30-40 µs (well under 62.5 µs budget)
+    // Total cycle: ~30-40 µs (well under 125 µs budget)
 }
 ```
 
@@ -358,9 +356,9 @@ void __attribute__((interrupt)) TIM1_IRQHandler(void) {
 Measure actual inference latency on your hardware:
 
 ```c
-// In interrupt handler, add timing:
+// In foreground_loop_handler, add timing:
 uint32_t t0 = get_microseconds();
-fault_classifier_16khz_tick(...);
+fault_classifier_foreground_loop_tick(...);
 uint32_t elapsed = get_microseconds() - t0;
 printf("Inference: %lu µs\n", elapsed);
 ```
@@ -368,7 +366,7 @@ printf("Inference: %lu µs\n", elapsed);
 Expected results:
 - STM32F4 @ 168 MHz: ~40-60 µs
 - STM32H7 @ 400 MHz: ~20-40 µs
-- Budget: 62.5 µs ✓
+- Budget: 125 µs ✓
 
 ### 4.2 Model Accuracy Check
 
@@ -500,14 +498,14 @@ xxd -i fault_classifier_v2.tflite > model_data_v2.h
 
 ## Part 6: Troubleshooting
 
-### Issue: Inference latency > 62.5 µs
+### Issue: Inference latency > 125 µs
 
-**Cause:** Model inference too slow (or other interrupt code taking too long)
+**Cause:** Model inference too slow (or other foreground_loop code taking too long)
 
 **Solutions:**
 1. Increase inference interval: Run every 200 ms instead of 100 ms
    ```c
-   inference_control.sample_interval = 3200;  // 200 ms at 16 kHz
+   inference_control.sample_interval = 1600;  // 200 ms at 8 kHz
    ```
 
 2. Use lower-precision quantization or smaller model
@@ -617,8 +615,8 @@ void update_features_if_needed(void) {
 - [ ] Model trained on synthetic data (DONE)
 - [ ] Converted to TFLite int8 quantized (DONE)
 - [ ] Model size verified < 256 KB Flash (DONE)
-- [ ] Latency measured < 62.5 µs (TODO: on hardware)
-- [ ] Integrated into 16 kHz interrupt (TODO)
+- [ ] Latency measured < 125 µs (TODO: on hardware)
+- [ ] Integrated into 8 kHz foreground_loop (TODO)
 - [ ] Hybrid operation (ML + rules) implemented (TODO)
 - [ ] Confidence filtering enabled (TODO)
 - [ ] Latency profiling done (TODO)

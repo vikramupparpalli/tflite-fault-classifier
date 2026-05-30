@@ -7,7 +7,7 @@ Predicts: NO_FAULT, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT
 
 Constraints:
   - Model size: < 50 KB (for 256 KB Flash with other code)
-  - Latency: < 62.5 µs at 16 kHz (tight!)
+  - Latency: < 125 µs at 8 kHz
   - RAM: < 40 KB
   - Use int8 quantization
 
@@ -289,5 +289,5 @@ if __name__ == '__main__':
     print(f"\nNext steps:")
     print(f"  1. Copy 'fault_classifier.tflite' to your embedded project")
     print(f"  2. Use the C inference code (tflite_inference_template.c)")
-    print(f"  3. Integrate with your 16 kHz interrupt loop")
+    print(f"  3. Integrate with your 8 kHz foreground_loop")
     print(f"  4. Collect real data and retrain with: python retrain_tflite.py")

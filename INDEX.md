@@ -2,11 +2,11 @@
 
 ## 📋 What You Have
 
-A complete, production-ready TinyML fault classification system for your 16 kHz motor control interrupt loop.
+A complete, production-ready TinyML fault classification system for your 8 kHz motor control foreground_loop loop.
 
 **Key Capabilities:**
 - 6-class fault detector (HEALTHY, OVERCURRENT, OVERVOLTAGE, UNDERVOLTAGE, OVERTEMP, VFO_FAULT)
-- Real-time inference: 40-60 µs latency (within 62.5 µs budget ✓)
+- Real-time inference: 40-60 µs latency (within 125 µs budget ✓)
 - Tiny model: 7 KB (fits in 256 KB Flash with headroom ✓)
 - Synthetic training: Start immediately, no pre-collected data needed
 - Retraining framework: Improve with real field data after deployment
@@ -19,7 +19,7 @@ A complete, production-ready TinyML fault classification system for your 16 kHz 
 ### Original Diagnostics Framework
 ```
 motor_diagnostics_framework.md
-├── System parameters (16 kHz, 5 sensor inputs)
+├── System parameters (8 kHz, 5 sensor inputs)
 ├── 5 fault conditions & detection strategies
 ├── State machines & timing
 ├── Threshold guidance
@@ -108,11 +108,11 @@ python validate_and_retrain.py compare \
 - Quantization (float → int8)
 - Inference execution (runs model)
 - Non-blocking periodic inference (every 100 ms)
-- Integration hooks for your 16 kHz loop
+- Integration hooks for your 8 kHz loop
 
 **Key functions:**
 - `fault_classifier_init()` — Call at startup
-- `fault_classifier_16khz_tick()` — Call from interrupt handler
+- `fault_classifier_foreground_loop_tick()` — Call from foreground_loop handler
 - `get_fault_prediction()` — Get latest classification
 - `get_fault_name()` — Convert class to string
 - `get_prediction_confidence()` — Confidence 0-100%
@@ -122,10 +122,10 @@ python validate_and_retrain.py compare \
 // At startup
 fault_classifier_init();
 
-// In 16 kHz interrupt
+// In 8 kHz foreground_loop
 void tim_isr(void) {
     // ... read sensors ...
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
+    fault_classifier_foreground_loop_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     // ... rest of ISR ...
 }
 
@@ -149,7 +149,7 @@ uint8_t fault = get_fault_prediction();
 4. ✓ Model training & quantization
 5. ✓ Conversion to C header (xxd)
 6. ✓ Embedded project setup (CMake, TFLite Micro)
-7. ✓ Firmware integration & 16 kHz loop
+7. ✓ Firmware integration & 8 kHz loop
 8. ✓ Validation & latency profiling
 9. ✓ Hybrid operation (ML + rules)
 10. ✓ Retraining with real data
@@ -225,7 +225,7 @@ xxd -i fault_classifier.tflite > model_data.h
 
 ### Step 5: Integrate (15 min)
 - Call `fault_classifier_init()` in main
-- Call `fault_classifier_16khz_tick()` from interrupt
+- Call `fault_classifier_foreground_loop_tick()` from foreground_loop
 - Get predictions with `get_fault_prediction()`
 
 **✓ Done!** You have a working TinyML fault classifier.
@@ -372,7 +372,7 @@ C++ compiler (for TFLite Micro)
 - [ ] Firmware compiles without errors
 - [ ] `fault_classifier_init()` succeeds at startup
 - [ ] Model produces reasonable predictions
-- [ ] Inference latency < 62.5 µs (measured)
+- [ ] Inference latency < 125 µs (measured)
 - [ ] Hybrid operation (ML + rules) working
 
 ### Validation Phase

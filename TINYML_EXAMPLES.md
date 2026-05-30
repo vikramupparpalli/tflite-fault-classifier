@@ -108,12 +108,12 @@ print(metrics['report'])
 """
 File: motor_control.c
 
-Minimal example integrating classifier into 16 kHz interrupt
+Minimal example integrating classifier into 8 kHz foreground_loop
 """
 
 #include "fault_classifier.h"
 
-// Global sensor values (updated by ADC ISR)
+// Global sensor values (updated by ADC reads in foreground_loop)
 volatile float Ia_reading = 0;
 volatile float Ib_reading = 0;
 volatile float Ic_reading = 0;
@@ -129,14 +129,12 @@ void init_motor_control(void) {
         // Disable ML, use rule-based only
     }
     
-    // Start 16 kHz timer
-    start_16khz_timer();
+    // Start 8 kHz foreground_loop
+    start_foreground_loop();
 }
 
-// 16 kHz interrupt handler
-void __attribute__((interrupt)) TIM1_UP_IRQHandler(void) {
-    // Clear interrupt flag
-    TIM1->SR &= ~TIM_SR_UIF;
+// 8 kHz foreground_loop handler
+void foreground_loop_handler(void) {
     
     // ===== SENSOR READS =====
     float Ia = Ia_reading;
@@ -145,8 +143,8 @@ void __attribute__((interrupt)) TIM1_UP_IRQHandler(void) {
     float Vdc = Vdc_reading;
     float Temp = Temp_reading;
     
-    // ===== FAULT CLASSIFICATION (every 100 ms) =====
-    fault_classifier_16khz_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
+    // ===== FAULT CLASSIFICATION (every 100 ms = 800 cycles) =====
+    fault_classifier_foreground_loop_tick(Ia, Ib, Ic, Vdc, Temp, VFO_feedback);
     
     // ===== GET LATEST PREDICTION =====
     // (prediction is updated every 100 ms, not every cycle)
@@ -174,7 +172,7 @@ void __attribute__((interrupt)) TIM1_UP_IRQHandler(void) {
         }
     }
     
-    // ===== REST OF ISR (your normal motor control) =====
+    // ===== REST OF FOREGROUND LOOP (your normal motor control) =====
     update_pwm_commutation();
     sample_temperature();
 }
@@ -188,7 +186,7 @@ int main(void) {
         
         // Every 1 second, log diagnostics
         static int log_counter = 0;
-        if (log_counter++ >= 16000) {
+        if (log_counter++ >= 8000) {
             uint8_t fault = get_fault_prediction();
             printf("Fault: %s (confidence: %d%%)\n",
                    get_fault_name(fault),
@@ -427,8 +425,8 @@ void measure_inference_performance(void) {
     
     printf("Average latency:  %lu µs\n", avg_time);
     printf("Max latency:      %lu µs\n", max_time);
-    printf("Budget (62.5µs):  %s\n", max_time <= 62500 ? "✓ PASS" : "✗ FAIL");
-    printf("CPU usage:        %.1f%%\n", (float)avg_time / 62.5f * 100.0f);
+    printf("Budget (125µs):   %s\n", max_time <= 125000 ? "✓ PASS" : "✗ FAIL");
+    printf("CPU usage:        %.1f%%\n", (float)avg_time / 125.0f * 100.0f);
 }
 
 
