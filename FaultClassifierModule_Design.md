@@ -5,24 +5,24 @@ Below is a high-level diagram showing how the TFLite Fault Classifier Module can
 
 ```mermaid
 flowchart TD
-	subgraph MCU [Microcontroller]
-		A[Sensor Inputs (Ia, Ib, Ic, Vdc, Temp, VFO_feedback)] -->|Sampled at 8kHz| B[Feature Engineering (C code)]
-		B --> C[TfLite Fault Classifier Model (TfLite_FaultClassifierModel)]
-		C --> D{Fault Class Index (0=NO_FAULT, 1=OVERCURRENT, ...)}
-		D -->|NO_FAULT| E[Normal Motor Control]
-		D -->|FAULT| F[Fault Handling (Shutdown, Logging, etc)]
-	end
+    subgraph MCU [Microcontroller]
+        A["Sensor Inputs (Ia, Ib, Ic, Vdc, Temp, VFO_feedback)"] -->|Sampled at 8kHz| B["Feature Engineering (C code)"]
+        B --> C["TfLite Fault Classifier Model (TfLite_FaultClassifierModel)"]
+        C --> D{"Fault Class Index (0=NO_FAULT, 1=OVERCURRENT, ...)"}
+        D -->|NO_FAULT| E[Normal Motor Control]
+        D -->|FAULT| F["Fault Handling (Shutdown, Logging, etc)"]
+    end
 
-	subgraph App [Application Layer]
-		G[Initialization (TfLite_FaultClassifierModel_Init)]
-		H[SetSensorData + RunInference (every control loop)]
-		I[GetPredictedLabel / ClassScores]
-	end
+    subgraph App [Application Layer]
+        G["Initialization (TfLite_FaultClassifierModel_Init)"]
+        H["SetSensorData + RunInference (every control loop)"]
+        I["GetPredictedLabel / ClassScores"]
+    end
 
-	G --> H
-	H --> I
-	H -.-> B
-	I -.-> F
+    G --> H
+    H --> I
+    H -.-> B
+    I -.-> F
 ```
 
 **Description:**
