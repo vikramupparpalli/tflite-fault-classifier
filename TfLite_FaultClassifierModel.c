@@ -15,8 +15,6 @@
  *   1. Call TfLite_FaultClassifierModel_Init() once at startup.
  *   2. For each new set of sensor data, call SetSensorData(), then RunInference().
  *   3. After inference, check predictedClass or use GetPredictedLabel() to determine the detected fault.
- *
- * Copyright GE Appliances - Confidential - All rights reserved
  */
 
 #include "I_TfliteModel.h"
