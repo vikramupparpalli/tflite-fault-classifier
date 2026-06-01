@@ -4,6 +4,62 @@ This repository is a full tinyML pipeline for motor fault detection. The Python 
 
 This tutorial is written to help you understand each module and function in the repository, then integrate the result into an embedded target with enough ROM and RAM. The current embedded implementation in [TfLite_FaultClassifierModel.c](TfLite_FaultClassifierModel.c) uses a 16 KB tensor arena and a compact 6-feature, 6-class int8 model. That is a good fit for an MCU-class device such as RA6T3, provided you leave headroom for the TensorFlow Lite Micro library, your application code, stack, and RTOS or bare-metal runtime.
 
+## RA6T3 Bring-Up Quick Sheet
+
+Use this one-page version during first lab integration. For full detail, see [RA6T3 Bring-Up Checklist](TINYML_TUTORIAL.md#ra6t3-bring-up-checklist).
+
+### Pre-Flash
+
+- [ ] Build passes with TensorFlow Lite Micro and classifier files enabled.
+- [ ] Link resolves `TfLite_FaultClassifierModel_Init` and `fault_classifier_tflite`.
+- [ ] `model_data.h` is generated from the intended `fault_classifier.tflite`.
+- [ ] Map file confirms Flash/RAM remain within RA6T3 project budgets.
+
+### Boot
+
+- [ ] `TfLite_FaultClassifierModel_Init()` is called once at startup.
+- [ ] Init returns `0` on target hardware.
+- [ ] Fallback path is exercised for forced init failure.
+
+### Input Path
+
+- [ ] Input order is exactly: Ia, Ib, Ic, Vdc, Temp, VFO_feedback.
+- [ ] Units match training assumptions.
+- [ ] Fixed test vector returns deterministic repeated prediction.
+
+### Runtime Timing
+
+- [ ] Inference period is defined (for example every N cycles).
+- [ ] Worst-case inference timing measured on hardware.
+- [ ] Control-loop deadline still met with inference enabled.
+
+### Functional Fault Checks
+
+- [ ] Normal input returns NO_FAULT for steady operation.
+- [ ] Injected overcurrent-like input maps to class 1 behavior.
+- [ ] Injected overvoltage-like input maps to class 2 behavior.
+- [ ] Injected undervoltage-like input maps to class 3 behavior.
+- [ ] Injected overtemp-like input maps to class 4 behavior.
+- [ ] Injected VFO fault-like input maps to class 5 behavior.
+
+### Safety and Application Mapping
+
+- [ ] Each class maps to expected application action.
+- [ ] PWM/torque/fault latch behavior validated.
+- [ ] Error/fallback behavior is deterministic and safe.
+
+### Stability Gate
+
+- [ ] Soak test completed with periodic inference enabled.
+- [ ] No hard faults, watchdog resets, or memory corruption observed.
+- [ ] No timing drift that violates real-time constraints.
+
+### Release Gate
+
+- [ ] Model version, scaler values, and artifact hash logged in release notes.
+- [ ] Bring-up logs archived.
+- [ ] CI checks enforce init success, deterministic vector test, and memory thresholds.
+
 ## What tinyML Means Here
 
 tinyML means building machine learning systems that can run on very constrained hardware. In practice that means:
@@ -649,6 +705,231 @@ Recommendations:
 - protect shared access with a lock or critical section if multiple contexts are involved
 
 If the firmware is bare metal and single-threaded, the design is simpler. If you are on an RTOS, protect the classifier interface like any other shared resource.
+
+## What the Application Repository Must Provide
+
+For this classifier to integrate cleanly, your application repository should already provide the following pieces.
+
+### 1. Required Third-Party Libraries
+
+- TensorFlow Lite Micro source tree (or prebuilt equivalent) compatible with your toolchain
+- C standard library headers used by this implementation (`string.h`, `math.h`, `stdio.h`)
+- Math library link support for `sqrtf` and `roundf` (usually `-lm` on GCC-based toolchains)
+
+For the current model wrapper in [TfLite_FaultClassifierModel.c](TfLite_FaultClassifierModel.c), the required TFLM capabilities are:
+
+- model/schema support (`schema_generated.h`)
+- micro interpreter support (`micro_interpreter.h`)
+- resolver support (`all_ops_resolver.h` or mutable resolver equivalent)
+- target setup (`system_setup.h`)
+
+### 2. Build System Wiring
+
+Your repository build system must:
+
+- compile the classifier wrapper and interface files
+- compile or link TensorFlow Lite Micro sources
+- expose include paths for TensorFlow Lite Micro headers
+- include the generated model blob header (`model_data.h`)
+- compile with C++ enabled where required by TensorFlow Lite Micro components
+
+Practical checks:
+
+- the final link contains `TfLite_FaultClassifierModel_Init`
+- the final link contains `fault_classifier_tflite` from `model_data.h`
+- there are no unresolved symbols from TFLite Micro or math functions
+
+### 3. Generated Artifacts From Training Repo
+
+Your application repository expects these artifacts from this tinyML project:
+
+- `fault_classifier.tflite`
+- `model_data.h` generated from the `.tflite` model
+- scaler values from [model_info.json](model_info.json)
+
+The current C wrapper hardcodes scaler constants. Any model retrain that changes scaler values requires updating those constants.
+
+### 4. Source Files to Vendor or Sync
+
+At minimum, the application repository should include:
+
+- [I_TfliteModel.h](I_TfliteModel.h)
+- [TfLite_FaultClassifierModel.h](TfLite_FaultClassifierModel.h)
+- [TfLite_FaultClassifierModel.c](TfLite_FaultClassifierModel.c)
+- generated `model_data.h`
+
+Recommended:
+
+- keep a small `README` in the application repo that records model version, model hash, and scaler provenance
+- track the script or command that generated `model_data.h`
+
+### 5. Application-Level Runtime Hooks
+
+This implementation expects the application to provide these runtime hooks:
+
+- system startup hook to call `TfLite_FaultClassifierModel_Init()` once
+- periodic data path that supplies six raw inputs in expected order
+- inference scheduling policy (for example every N control cycles)
+- fault-action mapping logic in the application state machine
+- optional telemetry/logging hook for class scores and predicted label
+
+Expected input order for `SetSensorData`:
+
+1. Ia
+2. Ib
+3. Ic
+4. Vdc
+5. Temp
+6. VFO_feedback
+
+### 6. Timing and Memory Policy
+
+The application repository should define explicit policies for:
+
+- where tensor arena memory is allocated (static storage recommended)
+- which execution context runs inference (task/loop/ISR policy)
+- worst-case timing budget around inference calls
+- fallback behavior when model init or invoke fails
+
+For RA6T3 integration, this policy should be documented in your firmware architecture notes so control-loop owners and safety owners agree on behavior.
+
+### 7. Versioning and Upgrade Expectations
+
+To keep upgrades safe, the application repository should treat model updates as versioned deliverables:
+
+- pin model version with a commit or release tag
+- store retrain metadata (dataset version, scaler values, class order)
+- validate old vs new model behavior before switching in production
+
+Without this, it is difficult to debug field regressions after model refresh.
+
+### 8. Recommended Minimal CI Checks in the Application Repo
+
+At least one CI job should verify:
+
+- classifier source files compile for target configuration
+- `TfLite_FaultClassifierModel_Init()` returns success in a target-like test harness
+- one known input vector yields a deterministic predicted class
+- firmware map file still meets ROM/RAM budget thresholds
+
+These checks catch integration drift early when either application code or model artifacts change.
+
+## RA6T3 Bring-Up Checklist
+
+Use this checklist during first hardware integration on RA6T3. The goal is to confirm that the model boots, runs deterministically, stays within memory and timing budgets, and maps safely into your existing fault-handling flow.
+
+### Phase 0: Pre-Flash Sanity (Build-Time)
+
+- [ ] Build succeeds with TensorFlow Lite Micro and classifier files enabled.
+- [ ] Link step resolves `TfLite_FaultClassifierModel_Init` and `fault_classifier_tflite`.
+- [ ] `model_data.h` included from the intended model artifact, not an old generated file.
+- [ ] Map file reviewed: Flash and RAM remain within project limits with margin.
+- [ ] Tensor arena symbol is present and allocated as static storage.
+
+Pass criteria:
+
+- clean build
+- no unresolved symbols
+- memory usage remains below your RA6T3 project thresholds
+
+### Phase 1: Boot and Initialization on Target
+
+- [ ] Device boots with classifier enabled.
+- [ ] `TfLite_FaultClassifierModel_Init()` is called exactly once at startup.
+- [ ] Init return code is `0`.
+- [ ] If init fails, application transitions to the documented fallback mode.
+
+Pass criteria:
+
+- deterministic startup
+- no crash or hard fault during model init
+- fallback path validated for negative init return values
+
+### Phase 2: Input Path Validation
+
+- [ ] Verify sensor feed order is exactly: Ia, Ib, Ic, Vdc, Temp, VFO_feedback.
+- [ ] Verify units and scaling match training assumptions.
+- [ ] Inject a fixed known vector and confirm stable repeated prediction.
+- [ ] Confirm `SetSensorData()` always receives 6 features.
+
+Pass criteria:
+
+- no feature-order mismatch
+- repeated inference on same input gives same class
+- no silent drop due to wrong `numFeatures`
+
+### Phase 3: Inference Scheduling and Real-Time Safety
+
+- [ ] Inference is not running in a way that breaks control-loop deadlines.
+- [ ] Chosen inference period is documented (for example every N cycles).
+- [ ] Worst-case execution time measured with inference enabled.
+- [ ] Jitter impact on control loop measured and accepted.
+
+Pass criteria:
+
+- loop timing remains within allowed budget
+- no missed deadlines under worst-case operating scenario
+
+### Phase 4: Functional Fault Classification Checks
+
+- [ ] Normal operating points mostly return `NO_FAULT`.
+- [ ] Overcurrent-like input vectors trigger class 1 behavior.
+- [ ] Overvoltage-like input vectors trigger class 2 behavior.
+- [ ] Undervoltage-like input vectors trigger class 3 behavior.
+- [ ] Overtemp-like input vectors trigger class 4 behavior.
+- [ ] VFO loss/toggle-like input vectors trigger class 5 behavior.
+
+Pass criteria:
+
+- class outputs align with injected scenario expectations
+- no persistent misclassification for basic synthetic spot checks
+
+### Phase 5: Application Action Mapping Validation
+
+- [ ] Predicted class maps to existing application state machine correctly.
+- [ ] Safety actions (PWM disable, torque limit, latching, reset policy) are verified.
+- [ ] Logging captures predicted class and timestamp for post-analysis.
+- [ ] Unknown/error paths are handled deterministically.
+
+Pass criteria:
+
+- each class has a clear tested action path
+- no unsafe action on model error/fallback path
+
+### Phase 6: Stability and Endurance
+
+- [ ] Run extended test with periodic inference enabled.
+- [ ] Monitor for memory corruption, stack overflow, and watchdog resets.
+- [ ] Confirm no progressive timing drift.
+- [ ] Confirm predictions remain valid after long runtime and temperature variation.
+
+Pass criteria:
+
+- stable operation for your defined soak duration
+- no reset, lockup, or model degradation symptoms
+
+### Phase 7: Release Gate
+
+- [ ] Model version, scaler values, and artifact hash recorded in release notes.
+- [ ] Bring-up logs archived.
+- [ ] CI/build checks updated to enforce memory and init checks.
+- [ ] Rollback strategy documented if model behavior regresses in field.
+
+Pass criteria:
+
+- reproducible integration package
+- clear rollback and traceability for future model updates
+
+### Optional Debug Instrumentation for First Bring-Up
+
+For early RA6T3 bring-up, temporary instrumentation is useful:
+
+- log init return code once at boot
+- log predicted class every inference period in a throttled way
+- log raw class scores only in debug builds
+- toggle a GPIO around `RunInference()` to profile execution on scope
+
+Remove or throttle these logs before production to avoid timing and Flash overhead.
 
 ## Suggested Integration Pattern for an Existing Embedded System
 
